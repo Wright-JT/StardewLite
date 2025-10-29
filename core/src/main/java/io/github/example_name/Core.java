@@ -19,8 +19,9 @@ public class Core extends ApplicationAdapter {
     private SpriteBatch batch;
     private BitmapFont font;
 
-    private int playerX = 5;
-    private int playerY = 4;
+    private float playerX = 5 * 32; // Start at tile 5, convert to pixels
+    private float playerY = 4 * 32;
+
     private TileState[][] farm;
     private Crop[][] crops;
     // Inventory fields
@@ -98,33 +99,47 @@ public class Core extends ApplicationAdapter {
         float delta = Gdx.graphics.getDeltaTime();
 
         int TILE_SIZE = 32;
-        camera.position.set(playerX * TILE_SIZE + TILE_SIZE /2f, playerY * TILE_SIZE + TILE_SIZE /2f, 0);
+        camera.position.set(playerX + TILE_SIZE / 2f, playerY + TILE_SIZE / 2f, 0);
         camera.update();
         shapeRenderer.setProjectionMatrix(camera.combined);
         ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
 
         // --- Movement ---
-        if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.LEFT)) playerX--;
-        if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.RIGHT)) playerX++;
-        if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.UP)) playerY++;
-        if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.DOWN)) playerY--;
 
-        playerX = Math.max(0, Math.min(playerX, GRID_WIDTH - 1));
-        playerY = Math.max(0, Math.min(playerY, GRID_HEIGHT - 1));
+        // pixels per second
+        float PLAYER_SPEED = 150f;
+        if (Gdx.input.isKeyPressed(Input.Keys.LEFT))  playerX -= PLAYER_SPEED * delta;
+        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) playerX += PLAYER_SPEED * delta;
+        if (Gdx.input.isKeyPressed(Input.Keys.UP))    playerY += PLAYER_SPEED * delta;
+        if (Gdx.input.isKeyPressed(Input.Keys.DOWN))  playerY -= PLAYER_SPEED * delta;
+
+// Clamp inside map bounds (in pixels)
+        playerX = Math.max(0, Math.min(playerX, GRID_WIDTH * 32 - 32));
+        playerY = Math.max(0, Math.min(playerY, GRID_HEIGHT * 32 - 32));
+
 
         // --- Handle SPACE key ---
         if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.SPACE)) {
-            TileState current = farm[playerX][playerY];
-            Crop crop = crops[playerX][playerY];
+
+            int tileX = (int)(playerX / TILE_SIZE);
+            int tileY = (int)(playerY / TILE_SIZE);
+
+            tileX = Math.max(0, Math.min(tileX, GRID_WIDTH - 1));
+            tileY = Math.max(0, Math.min(tileY, GRID_HEIGHT - 1));
+
+            TileState current = farm[tileX][tileY];
+            Crop crop = crops[tileX][tileY];
 
             if (current == TileState.EMPTY) {
                 // Grass → till soil
-                farm[playerX][playerY] = TileState.TILLED;
+                farm[tileX][tileY] = TileState.TILLED;
+
             } else if (current == TileState.TILLED && crop == null) {
                 // Tilled soil → back to grass
-                farm[playerX][playerY] = TileState.EMPTY;
+                farm[tileX][tileY] = TileState.EMPTY;
+
             } else if (crop != null) {
-                // If crop fully grown → harvest
+                // Harvest logic
                 if (crop.fullyGrown) {
                     int slotIndex = -1;
                     switch (crop.type) {
@@ -137,7 +152,6 @@ public class Core extends ApplicationAdapter {
                     }
 
                     if (slotIndex >= 0) {
-                        // If slot empty, set the item type
                         if (inventoryItems[slotIndex] == null) {
                             inventoryItems[slotIndex] = crop.type.toString();
                             inventory[slotIndex] = 1;
@@ -146,23 +160,29 @@ public class Core extends ApplicationAdapter {
                         }
                     }
 
-                    // Remove crop from farm
-                    crops[playerX][playerY] = null;
-                    farm[playerX][playerY] = TileState.TILLED;
+                    crops[tileX][tileY] = null;
+                    farm[tileX][tileY] = TileState.TILLED;
+
                 } else {
-                    // Not fully grown → just remove crop and keep tilled soil
-                    crops[playerX][playerY] = null;
+                    // Not fully grown → remove and leave soil tilled
+                    crops[tileX][tileY] = null;
                 }
             }
         }
 
-        // --- Plant crops ---
-        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) && farm[playerX][playerY] == TileState.TILLED) {
-            crops[playerX][playerY] = new Crop(CropType.WHEAT);
+// --- Plant crops ---
+        int tileX = (int)(playerX / TILE_SIZE);
+        int tileY = (int)(playerY / TILE_SIZE);
+        tileX = Math.max(0, Math.min(tileX, GRID_WIDTH - 1));
+        tileY = Math.max(0, Math.min(tileY, GRID_HEIGHT - 1));
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) && farm[tileX][tileY] == TileState.TILLED) {
+            crops[tileX][tileY] = new Crop(CropType.WHEAT);
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2) && farm[playerX][playerY] == TileState.TILLED) {
-            crops[playerX][playerY] = new Crop(CropType.CARROT);
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2) && farm[tileX][tileY] == TileState.TILLED) {
+            crops[tileX][tileY] = new Crop(CropType.CARROT);
         }
+
 
 
         // --- Update crops ---
@@ -181,6 +201,60 @@ public class Core extends ApplicationAdapter {
         if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.D)) {
             selectedSlot = (selectedSlot + 1) % HOTBAR_SLOTS;
         }
+
+        if (Gdx.input.justTouched()) {
+            // Convert mouse (screen) → world
+            com.badlogic.gdx.math.Vector3 mousePos = new com.badlogic.gdx.math.Vector3(Gdx.input.getX(), Gdx.input.getY(), 0);
+            camera.unproject(mousePos);
+
+            int clickedTileX = (int)(mousePos.x / TILE_SIZE);
+            int clickedTileY = (int)(mousePos.y / TILE_SIZE);
+
+            // Clamp bounds
+            clickedTileX = Math.max(0, Math.min(clickedTileX, GRID_WIDTH - 1));
+            clickedTileY = Math.max(0, Math.min(clickedTileY, GRID_HEIGHT - 1));
+
+            // Check distance (player must be close, e.g., <= 1 tile)
+            float distX = Math.abs((int)(playerX / TILE_SIZE) - clickedTileX);
+            float distY = Math.abs((int)(playerY / TILE_SIZE) - clickedTileY);
+            boolean closeEnough = (distX <= 2 && distY <= 2);
+
+            if (closeEnough) {
+                TileState current = farm[clickedTileX][clickedTileY];
+                Crop crop = crops[clickedTileX][clickedTileY];
+
+                if (current == TileState.EMPTY) {
+                    farm[clickedTileX][clickedTileY] = TileState.TILLED;
+
+                } else if (current == TileState.TILLED && crop == null) {
+                    farm[clickedTileX][clickedTileY] = TileState.EMPTY;
+
+                } else if (crop != null) {
+                    if (crop.fullyGrown) {
+                        // Harvest → add to inventory
+                        int slotIndex = -1;
+                        switch (crop.type) {
+                            case WHEAT:
+                                slotIndex = 0;
+                                break;
+                            case CARROT:
+                                slotIndex = 1;
+                                break;
+                        }
+
+                        if (inventoryItems[slotIndex] == null) inventoryItems[slotIndex] = crop.type.toString();
+                        inventory[slotIndex]++;
+
+                        crops[clickedTileX][clickedTileY] = null;
+                        farm[clickedTileX][clickedTileY] = TileState.TILLED;
+                    } else {
+                        // Remove young crop → leave tilled
+                        crops[clickedTileX][clickedTileY] = null;
+                    }
+                }
+            }
+        }
+
 
         // --- Draw farm and crops ---
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
@@ -207,7 +281,7 @@ public class Core extends ApplicationAdapter {
 
         // --- Draw player ---
         shapeRenderer.setColor(1, 0, 0, 1);
-        shapeRenderer.rect(playerX * TILE_SIZE, playerY * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        shapeRenderer.rect(playerX, playerY, TILE_SIZE, TILE_SIZE);
         shapeRenderer.end();
 
         // --- Draw inventory slots ---
