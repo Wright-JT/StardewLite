@@ -33,7 +33,6 @@ public class Core extends ApplicationAdapter {
 
     private float playerX, playerY;
     private final int TILE_SIZE = 32;
-    private final float PLAYER_SCALE = 2.2f;
     private float playerWidth, playerHeight;
 
     private TileState[][] farm;
@@ -87,6 +86,7 @@ public class Core extends ApplicationAdapter {
         oceanMap = new TmxMapLoader().load("ocean.tmx");
         oceanRenderer = new OrthogonalTiledMapRenderer(oceanMap, TILE_SIZE / 8f);
 
+        float PLAYER_SCALE = 2.2f;
         playerWidth = TILE_SIZE * PLAYER_SCALE;
         playerHeight = TILE_SIZE * PLAYER_SCALE;
 
@@ -164,10 +164,8 @@ public class Core extends ApplicationAdapter {
 
         // --- planting seeds ---
         if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) || Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
-            int px = (int) (playerX / TILE_SIZE);
-            int py = (int) (playerY / TILE_SIZE);
-            int targetX = px;
-            int targetY = py;
+            int targetX = (int) (playerX / TILE_SIZE);
+            int targetY = (int) (playerY / TILE_SIZE);
 
             // Plant directly where the player is standing (optional: you can offset 1 tile forward later)
             if (inBounds(targetX, targetY) && farm[targetX][targetY] == TileState.TILLED && crops[targetX][targetY] == null) {
@@ -260,17 +258,26 @@ public class Core extends ApplicationAdapter {
 
         shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
             Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         for (int i = 0; i < HOTBAR_SLOTS; i++) {
-            // light transparent white highlight
+            int xPos = startX + i * (slotSize + spacing);
+            int border = 2;
+
+            // --- black border ---
+            shapeRenderer.setColor(0f, 0f, 0f, 1f);
+            shapeRenderer.rect(xPos - border, y - border, slotSize + border * 2, slotSize + border * 2);
+
+            // --- slot background ---
             if (i == selectedSlot)
-                shapeRenderer.setColor(0.7f, 0.7f, 0.7f, 1);
+                shapeRenderer.setColor(0.7f, 0.7f, 0.7f, 1f); // slightly lighter gray
             else
-                shapeRenderer.setColor(0.5f, 0.5f, 0.5f, 1);
-            shapeRenderer.rect(startX + i * (slotSize + spacing), y, slotSize, slotSize);
+                shapeRenderer.setColor(0.5f, 0.5f, 0.5f, 1f);
+            shapeRenderer.rect(xPos, y, slotSize, slotSize);
         }
         shapeRenderer.end();
 
+        // Draw inventory item textures and counts
         batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
             Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
         batch.begin();
@@ -287,7 +294,7 @@ public class Core extends ApplicationAdapter {
             }
         }
         batch.end();
-    }
+}
 
     @Override
     public void dispose() {
@@ -323,47 +330,47 @@ public class Core extends ApplicationAdapter {
                 }
             }
 
-            generateSmoothIsland(DATA, cx + 55, cy + 28, 9, 7, r);
-            generateSmoothIsland(DATA, cx - 65, cy - 35, 10, 8, r);
-            generateSmoothIsland(DATA, cx + 60, cy - 40, 12, 9, r);
+            generateSmoothIsland(cx + 55, cy + 28, 9, 7, r);
+            generateSmoothIsland(cx - 65, cy - 35, 10, 8, r);
+            generateSmoothIsland(cx + 60, cy - 40, 12, 9, r);
 
             for (int y = 0; y < HEIGHT; y++) {
                 for (int x = 0; x < WIDTH; x++) {
-                    if (DATA[y][x] == 0 && hasLandWithinRadius(DATA, x, y, 3))
+                    if (DATA[y][x] == 0 && hasLandWithinRadius(x, y))
                         DATA[y][x] = 2;
                 }
             }
         }
 
-        private static boolean hasLandWithinRadius(int[][] data, int x, int y, int radius) {
-            for (int dy = -radius; dy <= radius; dy++)
-                for (int dx = -radius; dx <= radius; dx++) {
+        private static boolean hasLandWithinRadius(int x, int y) {
+            for (int dy = -3; dy <= 3; dy++)
+                for (int dx = -3; dx <= 3; dx++) {
                     int nx = x + dx, ny = y + dy;
-                    if (nx >= 0 && ny >= 0 && ny < data.length && nx < data[0].length)
-                        if (data[ny][nx] == 1 && Math.sqrt(dx * dx + dy * dy) <= radius)
+                    if (nx >= 0 && ny >= 0 && ny < IslandMap.DATA.length && nx < IslandMap.DATA[0].length)
+                        if (IslandMap.DATA[ny][nx] == 1 && Math.sqrt(dx * dx + dy * dy) <= 3)
                             return true;
                 }
             return false;
         }
 
-        private static void generateSmoothIsland(int[][] d, int cx, int cy, int rx, int ry, Random r) {
-            for (int y = Math.max(0, cy - ry - 3); y < Math.min(d.length, cy + ry + 3); y++)
-                for (int x = Math.max(0, cx - rx - 3); x < Math.min(d[0].length, cx + rx + 3); x++) {
+        private static void generateSmoothIsland(int cx, int cy, int rx, int ry, Random r) {
+            for (int y = Math.max(0, cy - ry - 3); y < Math.min(IslandMap.DATA.length, cy + ry + 3); y++)
+                for (int x = Math.max(0, cx - rx - 3); x < Math.min(IslandMap.DATA[0].length, cx + rx + 3); x++) {
                     double dx = (x - cx) / (double) rx, dy = (y - cy) / (double) ry;
                     double dist = Math.sqrt(dx * dx + dy * dy);
                     double noise = (r.nextDouble() - 0.5) * 0.25;
                     double edge = smoothstep(1.0, 0.7, dist + noise);
-                    if (edge > 0.5) d[y][x] = 1;
+                    if (edge > 0.5) IslandMap.DATA[y][x] = 1;
                 }
         }
 
         private static double smoothstep(double e0, double e1, double x) {
-            double t = clamp((x - e0) / (e1 - e0), 0.0, 1.0);
+            double t = clamp((x - e0) / (e1 - e0));
             return t * t * (3 - 2 * t);
         }
 
-        private static double clamp(double val, double min, double max) {
-            return Math.max(min, Math.min(max, val));
+        private static double clamp(double val) {
+            return Math.max(0.0, Math.min(1.0, val));
         }
     }
 }
