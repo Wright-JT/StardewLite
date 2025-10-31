@@ -19,21 +19,19 @@ import java.util.Random;
 
 public class Core extends ApplicationAdapter {
     private ShapeRenderer shapeRenderer;
-    private final int GRID_HEIGHT = IslandMap.DATA.length;
-    private final int GRID_WIDTH = IslandMap.DATA[0].length;
     private OrthographicCamera camera;
     private SpriteBatch batch;
     private BitmapFont font;
 
+    private Texture playerTexture, grassTexture, sandTexture, wheatTexture, carrotTexture, houseTexture;
+    private TiledMap oceanMap;
+    private OrthogonalTiledMapRenderer oceanRenderer;
+
     private final int[][] ISLAND_MAP = IslandMap.DATA;
+    private final int GRID_HEIGHT = IslandMap.DATA.length;
+    private final int GRID_WIDTH = IslandMap.DATA[0].length;
 
-    private Texture playerTexture;
-    private Texture grassTexture;
-    private Texture wheatTexture;
-    private Texture carrotTexture;
-
-    private float playerX;
-    private float playerY;
+    private float playerX, playerY;
     private final int TILE_SIZE = 32;
     private final float PLAYER_SCALE = 2.2f;
     private float playerWidth, playerHeight;
@@ -46,11 +44,8 @@ public class Core extends ApplicationAdapter {
     private final int[] inventory = new int[HOTBAR_SLOTS];
     private final String[] inventoryItems = new String[HOTBAR_SLOTS];
 
-    // Tiled animated ocean
-    private TiledMap oceanMap;
-    private OrthogonalTiledMapRenderer oceanRenderer;
-
-    enum TileState {EMPTY, TILLED, PLANTED}
+    enum TileState { EMPTY, TILLED }
+    enum CropType { WHEAT, CARROT }
 
     static class Crop {
         float growTime;
@@ -68,16 +63,9 @@ public class Core extends ApplicationAdapter {
             if (growTime >= 20f) fullyGrown = true;
         }
 
-        float getGrowthPercent() {
-            return Math.min(growTime / 20f, 1f);
-        }
-
-        float getSize() {
-            return 0.1f + 0.8f * getGrowthPercent();
-        }
+        float getGrowthPercent() { return Math.min(growTime / 20f, 1f); }
+        float getSize() { return 0.1f + 0.8f * getGrowthPercent(); }
     }
-
-    enum CropType {WHEAT, CARROT}
 
     @Override
     public void create() {
@@ -89,16 +77,15 @@ public class Core extends ApplicationAdapter {
         batch = new SpriteBatch();
         font = new BitmapFont();
 
-        // --- textures ---
         playerTexture = new Texture(Gdx.files.internal("farmer.png"));
         grassTexture = new Texture(Gdx.files.internal("grass.png"));
+        sandTexture = new Texture(Gdx.files.internal("sand.png"));
         wheatTexture = new Texture(Gdx.files.internal("wheat.png"));
         carrotTexture = new Texture(Gdx.files.internal("carrot.png"));
+        houseTexture = new Texture(Gdx.files.internal("house.png"));
 
-        // --- load animated ocean map ---
         oceanMap = new TmxMapLoader().load("ocean.tmx");
         oceanRenderer = new OrthogonalTiledMapRenderer(oceanMap, TILE_SIZE / 8f);
-
 
         playerWidth = TILE_SIZE * PLAYER_SCALE;
         playerHeight = TILE_SIZE * PLAYER_SCALE;
@@ -111,7 +98,7 @@ public class Core extends ApplicationAdapter {
 
         Arrays.fill(inventory, 0);
 
-        // Spawn on first grass tile near center
+        // --- find spawn on land near center ---
         for (int y = GRID_HEIGHT / 2 - 5; y < GRID_HEIGHT / 2 + 5; y++) {
             for (int x = GRID_WIDTH / 2 - 5; x < GRID_WIDTH / 2 + 5; x++) {
                 if (ISLAND_MAP[y][x] == 1) {
@@ -122,7 +109,6 @@ public class Core extends ApplicationAdapter {
             }
         }
 
-        // Scroll wheel for inventory
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean scrolled(float amountX, float amountY) {
@@ -143,10 +129,8 @@ public class Core extends ApplicationAdapter {
         batch.setProjectionMatrix(camera.combined);
         ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
 
-        // --- movement ---
         float PLAYER_SPEED = 150f;
-        float nextX = playerX;
-        float nextY = playerY;
+        float nextX = playerX, nextY = playerY;
         if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) nextX -= PLAYER_SPEED * delta;
         if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) nextX += PLAYER_SPEED * delta;
         if (Gdx.input.isKeyPressed(Input.Keys.UP)) nextY += PLAYER_SPEED * delta;
@@ -154,16 +138,15 @@ public class Core extends ApplicationAdapter {
 
         int tx = (int) (nextX / TILE_SIZE);
         int ty = (int) (nextY / TILE_SIZE);
-        if (tx >= 0 && tx < GRID_WIDTH && ty >= 0 && ty < GRID_HEIGHT && ISLAND_MAP[ty][tx] == 1) {
+        if (inBounds(tx, ty) && ISLAND_MAP[ty][tx] != 0) { // walkable on grass or sand
             playerX = nextX;
             playerY = nextY;
         }
 
-        // --- render animated ocean first ---
         oceanRenderer.setView(camera);
         oceanRenderer.render();
 
-        // --- handle clicks ---
+        // --- tilling & harvesting ---
         if (Gdx.input.justTouched()) {
             Vector3 mouse = new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0);
             camera.unproject(mouse);
@@ -172,44 +155,50 @@ public class Core extends ApplicationAdapter {
             if (inBounds(mx, my)) {
                 float distX = Math.abs((int) (playerX / TILE_SIZE) - mx);
                 float distY = Math.abs((int) (playerY / TILE_SIZE) - my);
-                if (distX <= 2 && distY <= 2 && ISLAND_MAP[my][mx] == 1)
+                if (distX <= 2 && distY <= 2)
                     handleTileAction(mx, my);
             }
         }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+        // inside Core.java – updated planting + inventory highlight section only
+
+        // --- planting seeds ---
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) || Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
             int px = (int) (playerX / TILE_SIZE);
             int py = (int) (playerY / TILE_SIZE);
-            if (inBounds(px, py) && ISLAND_MAP[py][px] == 1)
-                handleTileAction(px, py);
+            int targetX = px;
+            int targetY = py;
+
+            // Plant directly where the player is standing (optional: you can offset 1 tile forward later)
+            if (inBounds(targetX, targetY) && farm[targetX][targetY] == TileState.TILLED && crops[targetX][targetY] == null) {
+                CropType type = Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) ? CropType.WHEAT : CropType.CARROT;
+                crops[targetX][targetY] = new Crop(type);
+            }
         }
 
-        int ptx = (int) (playerX / TILE_SIZE);
-        int pty = (int) (playerY / TILE_SIZE);
-        if (inBounds(ptx, pty) && farm[ptx][pty] == TileState.TILLED) {
-            if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1))
-                crops[ptx][pty] = new Crop(CropType.WHEAT);
-            if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2))
-                crops[ptx][pty] = new Crop(CropType.CARROT);
-        }
 
+        // update crops
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++)
                 if (crops[x][y] != null) crops[x][y].update(delta);
 
-        // --- draw island (grass) ---
+        // draw land
         batch.begin();
-        for (int x = 0; x < GRID_WIDTH; x++)
-            for (int y = 0; y < GRID_HEIGHT; y++)
+        for (int x = 0; x < GRID_WIDTH; x++) {
+            for (int y = 0; y < GRID_HEIGHT; y++) {
                 if (ISLAND_MAP[y][x] == 1)
                     batch.draw(grassTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                else if (ISLAND_MAP[y][x] == 2)
+                    batch.draw(sandTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
         batch.end();
 
-        // --- draw tilled soil + crops ---
+        // draw soil and crops
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++) {
-                if (ISLAND_MAP[y][x] == 0) continue;
+                if (ISLAND_MAP[y][x] != 1) continue;
                 if (farm[x][y] == TileState.TILLED) {
                     shapeRenderer.setColor(0.55f, 0.27f, 0.07f, 1);
                     shapeRenderer.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
@@ -225,7 +214,7 @@ public class Core extends ApplicationAdapter {
             }
         shapeRenderer.end();
 
-        // --- draw player ---
+        // player
         batch.begin();
         batch.draw(playerTexture,
             playerX - (playerWidth - TILE_SIZE) / 2f,
@@ -234,6 +223,30 @@ public class Core extends ApplicationAdapter {
         batch.end();
 
         drawInventory();
+    }
+
+    private void handleTileAction(int tileX, int tileY) {
+        if (!inBounds(tileX, tileY)) return;
+        int tileType = ISLAND_MAP[tileY][tileX];
+        if (tileType == 0 || tileType == 2) return;
+
+        TileState current = farm[tileX][tileY];
+        Crop crop = crops[tileX][tileY];
+
+        if (current == TileState.EMPTY) farm[tileX][tileY] = TileState.TILLED;
+        else if (crop != null && crop.fullyGrown) {
+            int slotIndex = -1;
+            for (int i = 0; i < HOTBAR_SLOTS; i++)
+                if (inventoryItems[i] == null || inventoryItems[i].equals(crop.type.toString())) {
+                    slotIndex = i; break;
+                }
+            if (slotIndex != -1) {
+                if (inventoryItems[slotIndex] == null)
+                    inventoryItems[slotIndex] = crop.type.toString();
+                inventory[slotIndex]++;
+            }
+            crops[tileX][tileY] = null;
+        }
     }
 
     private boolean inBounds(int x, int y) {
@@ -249,7 +262,11 @@ public class Core extends ApplicationAdapter {
             Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         for (int i = 0; i < HOTBAR_SLOTS; i++) {
-            shapeRenderer.setColor(i == selectedSlot ? 0.7f : 0.5f, 0.5f, 0.5f, 1);
+            // light transparent white highlight
+            if (i == selectedSlot)
+                shapeRenderer.setColor(0.7f, 0.7f, 0.7f, 1);
+            else
+                shapeRenderer.setColor(0.5f, 0.5f, 0.5f, 1);
             shapeRenderer.rect(startX + i * (slotSize + spacing), y, slotSize, slotSize);
         }
         shapeRenderer.end();
@@ -272,36 +289,6 @@ public class Core extends ApplicationAdapter {
         batch.end();
     }
 
-    private void handleTileAction(int tileX, int tileY) {
-        if (ISLAND_MAP[tileY][tileX] == 0) return;
-
-        TileState current = farm[tileX][tileY];
-        Crop crop = crops[tileX][tileY];
-
-        if (current == TileState.EMPTY) {
-            farm[tileX][tileY] = TileState.TILLED;
-        } else if (current == TileState.TILLED && crop == null) {
-            farm[tileX][tileY] = TileState.EMPTY;
-        } else if (crop != null) {
-            if (crop.fullyGrown) {
-                int slotIndex = -1;
-                for (int i = 0; i < HOTBAR_SLOTS; i++)
-                    if (inventoryItems[i] == null || inventoryItems[i].equals(crop.type.toString())) {
-                        slotIndex = i;
-                        break;
-                    }
-
-                if (slotIndex != -1) {
-                    if (inventoryItems[slotIndex] == null)
-                        inventoryItems[slotIndex] = crop.type.toString();
-                    inventory[slotIndex]++;
-                }
-                crops[tileX][tileY] = null;
-                farm[tileX][tileY] = TileState.TILLED;
-            } else crops[tileX][tileY] = null;
-        }
-    }
-
     @Override
     public void dispose() {
         shapeRenderer.dispose();
@@ -309,60 +296,69 @@ public class Core extends ApplicationAdapter {
         font.dispose();
         playerTexture.dispose();
         grassTexture.dispose();
+        sandTexture.dispose();
         wheatTexture.dispose();
         carrotTexture.dispose();
+        houseTexture.dispose();
         oceanMap.dispose();
         oceanRenderer.dispose();
     }
 
     // === ISLAND GENERATION ===
     public static class IslandMap {
-        public static final int WIDTH = 160;
-        public static final int HEIGHT = 100;
+        public static final int WIDTH = 160, HEIGHT = 100;
         public static final int[][] DATA = new int[HEIGHT][WIDTH];
 
         static {
             Random r = new Random(42);
-            int centerX = WIDTH / 2;
-            int centerY = HEIGHT / 2;
+            int cx = WIDTH / 2, cy = HEIGHT / 2;
 
-            // --- main island ---
             for (int y = 0; y < HEIGHT; y++) {
                 for (int x = 0; x < WIDTH; x++) {
-                    double dx = (x - centerX) / 1.2;
-                    double dy = (y - centerY) / 1.4;
+                    double dx = (x - cx) / 1.2, dy = (y - cy) / 1.4;
                     double dist = Math.sqrt(dx * dx + dy * dy);
-                    double radius = 24;
-                    double edge = smoothstep(radius + 3, radius - 6, dist);
+                    double radius = 24, edge = smoothstep(radius + 3, radius - 6, dist);
                     double noise = (r.nextDouble() - 0.5) * 4.0;
-                    if (dist + noise < radius * edge)
-                        DATA[y][x] = 1;
-                    else
-                        DATA[y][x] = 0;
+                    DATA[y][x] = (dist + noise < radius * edge) ? 1 : 0;
                 }
             }
 
-            generateSmoothIsland(DATA, centerX + 55, centerY + 28, 9, 7, r);
-            generateSmoothIsland(DATA, centerX - 65, centerY - 35, 10, 8, r);
-            generateSmoothIsland(DATA, centerX + 60, centerY - 40, 12, 9, r);
+            generateSmoothIsland(DATA, cx + 55, cy + 28, 9, 7, r);
+            generateSmoothIsland(DATA, cx - 65, cy - 35, 10, 8, r);
+            generateSmoothIsland(DATA, cx + 60, cy - 40, 12, 9, r);
+
+            for (int y = 0; y < HEIGHT; y++) {
+                for (int x = 0; x < WIDTH; x++) {
+                    if (DATA[y][x] == 0 && hasLandWithinRadius(DATA, x, y, 3))
+                        DATA[y][x] = 2;
+                }
+            }
         }
 
-        private static void generateSmoothIsland(int[][] data, int cx, int cy, int radiusX, int radiusY, Random r) {
-            for (int y = Math.max(0, cy - radiusY - 3); y < Math.min(data.length, cy + radiusY + 3); y++) {
-                for (int x = Math.max(0, cx - radiusX - 3); x < Math.min(data[0].length, cx + radiusX + 3); x++) {
-                    double dx = (x - cx) / (double) radiusX;
-                    double dy = (y - cy) / (double) radiusY;
+        private static boolean hasLandWithinRadius(int[][] data, int x, int y, int radius) {
+            for (int dy = -radius; dy <= radius; dy++)
+                for (int dx = -radius; dx <= radius; dx++) {
+                    int nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && ny >= 0 && ny < data.length && nx < data[0].length)
+                        if (data[ny][nx] == 1 && Math.sqrt(dx * dx + dy * dy) <= radius)
+                            return true;
+                }
+            return false;
+        }
+
+        private static void generateSmoothIsland(int[][] d, int cx, int cy, int rx, int ry, Random r) {
+            for (int y = Math.max(0, cy - ry - 3); y < Math.min(d.length, cy + ry + 3); y++)
+                for (int x = Math.max(0, cx - rx - 3); x < Math.min(d[0].length, cx + rx + 3); x++) {
+                    double dx = (x - cx) / (double) rx, dy = (y - cy) / (double) ry;
                     double dist = Math.sqrt(dx * dx + dy * dy);
                     double noise = (r.nextDouble() - 0.5) * 0.25;
                     double edge = smoothstep(1.0, 0.7, dist + noise);
-                    if (edge > 0.5)
-                        data[y][x] = 1;
+                    if (edge > 0.5) d[y][x] = 1;
                 }
-            }
         }
 
-        private static double smoothstep(double edge0, double edge1, double x) {
-            double t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+        private static double smoothstep(double e0, double e1, double x) {
+            double t = clamp((x - e0) / (e1 - e0), 0.0, 1.0);
             return t * t * (3 - 2 * t);
         }
 
