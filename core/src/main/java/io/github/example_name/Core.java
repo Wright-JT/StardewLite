@@ -11,6 +11,9 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.maps.tiled.TiledMap;
+import com.badlogic.gdx.maps.tiled.TmxMapLoader;
+import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -42,6 +45,10 @@ public class Core extends ApplicationAdapter {
     private int selectedSlot = 0;
     private final int[] inventory = new int[HOTBAR_SLOTS];
     private final String[] inventoryItems = new String[HOTBAR_SLOTS];
+
+    // Tiled animated ocean
+    private TiledMap oceanMap;
+    private OrthogonalTiledMapRenderer oceanRenderer;
 
     enum TileState {EMPTY, TILLED, PLANTED}
 
@@ -82,10 +89,16 @@ public class Core extends ApplicationAdapter {
         batch = new SpriteBatch();
         font = new BitmapFont();
 
+        // --- textures ---
         playerTexture = new Texture(Gdx.files.internal("farmer.png"));
         grassTexture = new Texture(Gdx.files.internal("grass.png"));
         wheatTexture = new Texture(Gdx.files.internal("wheat.png"));
         carrotTexture = new Texture(Gdx.files.internal("carrot.png"));
+
+        // --- load animated ocean map ---
+        oceanMap = new TmxMapLoader().load("ocean.tmx");
+        oceanRenderer = new OrthogonalTiledMapRenderer(oceanMap, TILE_SIZE / 8f);
+
 
         playerWidth = TILE_SIZE * PLAYER_SCALE;
         playerHeight = TILE_SIZE * PLAYER_SCALE;
@@ -123,17 +136,17 @@ public class Core extends ApplicationAdapter {
     @Override
     public void render() {
         float delta = Gdx.graphics.getDeltaTime();
-
         camera.position.set(playerX + TILE_SIZE / 2f, playerY + TILE_SIZE / 2f, 0);
         camera.update();
+
         shapeRenderer.setProjectionMatrix(camera.combined);
         batch.setProjectionMatrix(camera.combined);
         ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
 
+        // --- movement ---
         float PLAYER_SPEED = 150f;
         float nextX = playerX;
         float nextY = playerY;
-
         if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) nextX -= PLAYER_SPEED * delta;
         if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) nextX += PLAYER_SPEED * delta;
         if (Gdx.input.isKeyPressed(Input.Keys.UP)) nextY += PLAYER_SPEED * delta;
@@ -146,12 +159,16 @@ public class Core extends ApplicationAdapter {
             playerY = nextY;
         }
 
+        // --- render animated ocean first ---
+        oceanRenderer.setView(camera);
+        oceanRenderer.render();
+
+        // --- handle clicks ---
         if (Gdx.input.justTouched()) {
             Vector3 mouse = new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0);
             camera.unproject(mouse);
             int mx = (int) (mouse.x / TILE_SIZE);
             int my = (int) (mouse.y / TILE_SIZE);
-
             if (inBounds(mx, my)) {
                 float distX = Math.abs((int) (playerX / TILE_SIZE) - mx);
                 float distY = Math.abs((int) (playerY / TILE_SIZE) - my);
@@ -180,15 +197,7 @@ public class Core extends ApplicationAdapter {
             for (int y = 0; y < GRID_HEIGHT; y++)
                 if (crops[x][y] != null) crops[x][y].update(delta);
 
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        for (int x = 0; x < GRID_WIDTH; x++)
-            for (int y = 0; y < GRID_HEIGHT; y++)
-                if (ISLAND_MAP[y][x] == 0) {
-                    shapeRenderer.setColor(0f, 0.4f, 0.8f, 1f);
-                    shapeRenderer.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                }
-        shapeRenderer.end();
-
+        // --- draw island (grass) ---
         batch.begin();
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++)
@@ -196,6 +205,7 @@ public class Core extends ApplicationAdapter {
                     batch.draw(grassTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
         batch.end();
 
+        // --- draw tilled soil + crops ---
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++) {
@@ -204,7 +214,6 @@ public class Core extends ApplicationAdapter {
                     shapeRenderer.setColor(0.55f, 0.27f, 0.07f, 1);
                     shapeRenderer.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
-
                 Crop c = crops[x][y];
                 if (c != null) {
                     float size = c.getSize() * TILE_SIZE;
@@ -216,6 +225,7 @@ public class Core extends ApplicationAdapter {
             }
         shapeRenderer.end();
 
+        // --- draw player ---
         batch.begin();
         batch.draw(playerTexture,
             playerX - (playerWidth - TILE_SIZE) / 2f,
@@ -301,6 +311,8 @@ public class Core extends ApplicationAdapter {
         grassTexture.dispose();
         wheatTexture.dispose();
         carrotTexture.dispose();
+        oceanMap.dispose();
+        oceanRenderer.dispose();
     }
 
     // === ISLAND GENERATION ===
@@ -320,14 +332,8 @@ public class Core extends ApplicationAdapter {
                     double dx = (x - centerX) / 1.2;
                     double dy = (y - centerY) / 1.4;
                     double dist = Math.sqrt(dx * dx + dy * dy);
-
-                    // base radius
                     double radius = 24;
-
-                    // soft falloff using smoothstep
                     double edge = smoothstep(radius + 3, radius - 6, dist);
-
-                    // layered noise for irregularity
                     double noise = (r.nextDouble() - 0.5) * 4.0;
                     if (dist + noise < radius * edge)
                         DATA[y][x] = 1;
@@ -336,7 +342,6 @@ public class Core extends ApplicationAdapter {
                 }
             }
 
-            // --- smaller nearby islands ---
             generateSmoothIsland(DATA, centerX + 55, centerY + 28, 9, 7, r);
             generateSmoothIsland(DATA, centerX - 65, centerY - 35, 10, 8, r);
             generateSmoothIsland(DATA, centerX + 60, centerY - 40, 12, 9, r);
@@ -356,7 +361,6 @@ public class Core extends ApplicationAdapter {
             }
         }
 
-        // smoothstep utility (gradual falloff)
         private static double smoothstep(double edge0, double edge1, double x) {
             double t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
             return t * t * (3 - 2 * t);
