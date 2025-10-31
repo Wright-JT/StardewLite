@@ -12,6 +12,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Vector3;
 import java.util.Arrays;
+import java.util.Random;
 
 public class Core extends ApplicationAdapter {
     private ShapeRenderer shapeRenderer;
@@ -42,7 +43,7 @@ public class Core extends ApplicationAdapter {
     private final int[] inventory = new int[HOTBAR_SLOTS];
     private final String[] inventoryItems = new String[HOTBAR_SLOTS];
 
-    enum TileState { EMPTY, TILLED, PLANTED }
+    enum TileState {EMPTY, TILLED, PLANTED}
 
     static class Crop {
         float growTime;
@@ -60,11 +61,16 @@ public class Core extends ApplicationAdapter {
             if (growTime >= 20f) fullyGrown = true;
         }
 
-        float getGrowthPercent() { return Math.min(growTime / 20f, 1f); }
-        float getSize() { return 0.1f + 0.8f * getGrowthPercent(); }
+        float getGrowthPercent() {
+            return Math.min(growTime / 20f, 1f);
+        }
+
+        float getSize() {
+            return 0.1f + 0.8f * getGrowthPercent();
+        }
     }
 
-    enum CropType { WHEAT, CARROT }
+    enum CropType {WHEAT, CARROT}
 
     @Override
     public void create() {
@@ -92,7 +98,7 @@ public class Core extends ApplicationAdapter {
 
         Arrays.fill(inventory, 0);
 
-        // --- find a grass tile near center for spawn ---
+        // Spawn on first grass tile near center
         for (int y = GRID_HEIGHT / 2 - 5; y < GRID_HEIGHT / 2 + 5; y++) {
             for (int x = GRID_WIDTH / 2 - 5; x < GRID_WIDTH / 2 + 5; x++) {
                 if (ISLAND_MAP[y][x] == 1) {
@@ -103,7 +109,7 @@ public class Core extends ApplicationAdapter {
             }
         }
 
-        // --- scroll wheel for inventory slots ---
+        // Scroll wheel for inventory
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean scrolled(float amountX, float amountY) {
@@ -128,45 +134,41 @@ public class Core extends ApplicationAdapter {
         float nextX = playerX;
         float nextY = playerY;
 
-        if (Gdx.input.isKeyPressed(Input.Keys.LEFT))  nextX -= PLAYER_SPEED * delta;
+        if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) nextX -= PLAYER_SPEED * delta;
         if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) nextX += PLAYER_SPEED * delta;
-        if (Gdx.input.isKeyPressed(Input.Keys.UP))    nextY += PLAYER_SPEED * delta;
-        if (Gdx.input.isKeyPressed(Input.Keys.DOWN))  nextY -= PLAYER_SPEED * delta;
+        if (Gdx.input.isKeyPressed(Input.Keys.UP)) nextY += PLAYER_SPEED * delta;
+        if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) nextY -= PLAYER_SPEED * delta;
 
-        // prevent walking on water
-        int tx = (int)(nextX / TILE_SIZE);
-        int ty = (int)(nextY / TILE_SIZE);
+        int tx = (int) (nextX / TILE_SIZE);
+        int ty = (int) (nextY / TILE_SIZE);
         if (tx >= 0 && tx < GRID_WIDTH && ty >= 0 && ty < GRID_HEIGHT && ISLAND_MAP[ty][tx] == 1) {
             playerX = nextX;
             playerY = nextY;
         }
 
-        // --- click to interact (within range only) ---
         if (Gdx.input.justTouched()) {
             Vector3 mouse = new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0);
             camera.unproject(mouse);
-            int mx = (int)(mouse.x / TILE_SIZE);
-            int my = (int)(mouse.y / TILE_SIZE);
+            int mx = (int) (mouse.x / TILE_SIZE);
+            int my = (int) (mouse.y / TILE_SIZE);
 
             if (inBounds(mx, my)) {
-                float distX = Math.abs((int)(playerX / TILE_SIZE) - mx);
-                float distY = Math.abs((int)(playerY / TILE_SIZE) - my);
+                float distX = Math.abs((int) (playerX / TILE_SIZE) - mx);
+                float distY = Math.abs((int) (playerY / TILE_SIZE) - my);
                 if (distX <= 2 && distY <= 2 && ISLAND_MAP[my][mx] == 1)
                     handleTileAction(mx, my);
             }
         }
 
-        // --- space key interaction ---
         if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            int px = (int)(playerX / TILE_SIZE);
-            int py = (int)(playerY / TILE_SIZE);
+            int px = (int) (playerX / TILE_SIZE);
+            int py = (int) (playerY / TILE_SIZE);
             if (inBounds(px, py) && ISLAND_MAP[py][px] == 1)
                 handleTileAction(px, py);
         }
 
-        // --- planting ---
-        int ptx = (int)(playerX / TILE_SIZE);
-        int pty = (int)(playerY / TILE_SIZE);
+        int ptx = (int) (playerX / TILE_SIZE);
+        int pty = (int) (playerY / TILE_SIZE);
         if (inBounds(ptx, pty) && farm[ptx][pty] == TileState.TILLED) {
             if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1))
                 crops[ptx][pty] = new Crop(CropType.WHEAT);
@@ -174,12 +176,10 @@ public class Core extends ApplicationAdapter {
                 crops[ptx][pty] = new Crop(CropType.CARROT);
         }
 
-        // --- update crops ---
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++)
                 if (crops[x][y] != null) crops[x][y].update(delta);
 
-        // --- draw map (water first, then grass texture) ---
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++)
@@ -196,7 +196,6 @@ public class Core extends ApplicationAdapter {
                     batch.draw(grassTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
         batch.end();
 
-        // --- draw tilled & crops ---
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++) {
@@ -217,7 +216,6 @@ public class Core extends ApplicationAdapter {
             }
         shapeRenderer.end();
 
-        // --- draw player ---
         batch.begin();
         batch.draw(playerTexture,
             playerX - (playerWidth - TILE_SIZE) / 2f,
@@ -279,7 +277,8 @@ public class Core extends ApplicationAdapter {
                 int slotIndex = -1;
                 for (int i = 0; i < HOTBAR_SLOTS; i++)
                     if (inventoryItems[i] == null || inventoryItems[i].equals(crop.type.toString())) {
-                        slotIndex = i; break;
+                        slotIndex = i;
+                        break;
                     }
 
                 if (slotIndex != -1) {
@@ -302,5 +301,69 @@ public class Core extends ApplicationAdapter {
         grassTexture.dispose();
         wheatTexture.dispose();
         carrotTexture.dispose();
+    }
+
+    // === ISLAND GENERATION ===
+    public static class IslandMap {
+        public static final int WIDTH = 160;
+        public static final int HEIGHT = 100;
+        public static final int[][] DATA = new int[HEIGHT][WIDTH];
+
+        static {
+            Random r = new Random(42);
+            int centerX = WIDTH / 2;
+            int centerY = HEIGHT / 2;
+
+            // --- main island ---
+            for (int y = 0; y < HEIGHT; y++) {
+                for (int x = 0; x < WIDTH; x++) {
+                    double dx = (x - centerX) / 1.2;
+                    double dy = (y - centerY) / 1.4;
+                    double dist = Math.sqrt(dx * dx + dy * dy);
+
+                    // base radius
+                    double radius = 24;
+
+                    // soft falloff using smoothstep
+                    double edge = smoothstep(radius + 3, radius - 6, dist);
+
+                    // layered noise for irregularity
+                    double noise = (r.nextDouble() - 0.5) * 4.0;
+                    if (dist + noise < radius * edge)
+                        DATA[y][x] = 1;
+                    else
+                        DATA[y][x] = 0;
+                }
+            }
+
+            // --- smaller nearby islands ---
+            generateSmoothIsland(DATA, centerX + 55, centerY + 28, 9, 7, r);
+            generateSmoothIsland(DATA, centerX - 65, centerY - 35, 10, 8, r);
+            generateSmoothIsland(DATA, centerX + 60, centerY - 40, 12, 9, r);
+        }
+
+        private static void generateSmoothIsland(int[][] data, int cx, int cy, int radiusX, int radiusY, Random r) {
+            for (int y = Math.max(0, cy - radiusY - 3); y < Math.min(data.length, cy + radiusY + 3); y++) {
+                for (int x = Math.max(0, cx - radiusX - 3); x < Math.min(data[0].length, cx + radiusX + 3); x++) {
+                    double dx = (x - cx) / (double) radiusX;
+                    double dy = (y - cy) / (double) radiusY;
+                    double dist = Math.sqrt(dx * dx + dy * dy);
+                    double noise = (r.nextDouble() - 0.5) * 0.25;
+                    double edge = smoothstep(1.0, 0.7, dist + noise);
+                    if (edge > 0.5)
+                        data[y][x] = 1;
+                }
+            }
+        }
+
+        // smoothstep utility (gradual falloff)
+        private static double smoothstep(double edge0, double edge1, double x) {
+            double t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+            return t * t * (3 - 2 * t);
+        }
+
+        private static double clamp(double val, double min, double max) {
+            return Math.max(min, Math.min(max, val));
+        }
     }
 }
