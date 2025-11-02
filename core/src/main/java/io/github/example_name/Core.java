@@ -11,41 +11,44 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Vector3;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.Color;
-
-
+import com.badlogic.gdx.maps.tiled.TiledMap;
+import com.badlogic.gdx.maps.tiled.TmxMapLoader;
+import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
 import java.util.Arrays;
+import java.util.Random;
 
 public class Core extends ApplicationAdapter {
     private ShapeRenderer shapeRenderer;
-    private final int GRID_WIDTH = 40;
-    private final int GRID_HEIGHT = 32;
     private OrthographicCamera camera;
     private SpriteBatch batch;
     private BitmapFont font;
+    private Random random = new Random();
 
-    private Texture playerTexture;
-    private Texture grassTexture;
-    private Texture wheatTexture;
-    private Texture carrotTexture;
+    private Texture playerTexture, grassTexture, sandTexture, wheatTexture, carrotTexture;
+    private Texture grass1Texture, grass2Texture, grass3Texture;
+    private Texture flower1Texture, flower2Texture, flower3Texture;
+    private TiledMap oceanMap;
+    private OrthogonalTiledMapRenderer oceanRenderer;
 
-    private float playerX = 5 * 32;
-    private float playerY = 4 * 32;
+    private final int[][] ISLAND_MAP = Island.DATA;
+    private final int GRID_HEIGHT = Island.HEIGHT;
+    private final int GRID_WIDTH = Island.WIDTH;
+
+    private float playerX, playerY;
     private final int TILE_SIZE = 32;
-    private final float PLAYER_SCALE = 2.2f;
     private float playerWidth, playerHeight;
 
     private TileState[][] farm;
     private Crop[][] crops;
+    private float[][] regrowTimers;
 
     private final int HOTBAR_SLOTS = 9;
     private int selectedSlot = 0;
     private final int[] inventory = new int[HOTBAR_SLOTS];
     private final String[] inventoryItems = new String[HOTBAR_SLOTS];
 
-    enum TileState { EMPTY, TILLED, PLANTED }
+    enum TileState { EMPTY, TILLED }
+    enum CropType { WHEAT, CARROT }
 
     static class Crop {
         float growTime;
@@ -64,15 +67,8 @@ public class Core extends ApplicationAdapter {
         }
 
         float getGrowthPercent() { return Math.min(growTime / 20f, 1f); }
-
-        float getSize() {
-            float min = 0.1f;
-            float max = 0.9f;
-            return min + (max - min) * getGrowthPercent();
-        }
+        float getSize() { return 0.1f + 0.8f * getGrowthPercent(); }
     }
-
-    enum CropType { WHEAT, CARROT }
 
     @Override
     public void create() {
@@ -84,34 +80,54 @@ public class Core extends ApplicationAdapter {
         batch = new SpriteBatch();
         font = new BitmapFont();
 
-        CurrencyManager.setCurrency(100);
-
+        // --- Load textures ---
+        grass1Texture = new Texture(Gdx.files.internal("grass1.png"));
+        grass2Texture = new Texture(Gdx.files.internal("grass2.png"));
+        grass3Texture = new Texture(Gdx.files.internal("grass3.png"));
+        flower1Texture = new Texture(Gdx.files.internal("flower1.png"));
+        flower2Texture = new Texture(Gdx.files.internal("flower2.png"));
+        flower3Texture = new Texture(Gdx.files.internal("flower3.png"));
         playerTexture = new Texture(Gdx.files.internal("farmer.png"));
         grassTexture = new Texture(Gdx.files.internal("grass.png"));
+        sandTexture = new Texture(Gdx.files.internal("sand.png"));
         wheatTexture = new Texture(Gdx.files.internal("wheat.png"));
         carrotTexture = new Texture(Gdx.files.internal("carrot.png"));
 
+        oceanMap = new TmxMapLoader().load("ocean.tmx");
+        oceanRenderer = new OrthogonalTiledMapRenderer(oceanMap, TILE_SIZE / 8f);
+
+        float PLAYER_SCALE = 2.2f;
         playerWidth = TILE_SIZE * PLAYER_SCALE;
         playerHeight = TILE_SIZE * PLAYER_SCALE;
 
         farm = new TileState[GRID_WIDTH][GRID_HEIGHT];
         crops = new Crop[GRID_WIDTH][GRID_HEIGHT];
+        regrowTimers = new float[GRID_WIDTH][GRID_HEIGHT];
+
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++) {
                 farm[x][y] = TileState.EMPTY;
-                crops[x][y] = null;
+                regrowTimers[x][y] = 0f;
             }
 
         Arrays.fill(inventory, 0);
 
-        // --- Mouse scroll listener for inventory slots ---
+        // --- find spawn on land near center ---
+        for (int y = GRID_HEIGHT / 2 - 5; y < GRID_HEIGHT / 2 + 5; y++) {
+            for (int x = GRID_WIDTH / 2 - 5; x < GRID_WIDTH / 2 + 5; x++) {
+                if (ISLAND_MAP[y][x] == 1) {
+                    playerX = x * TILE_SIZE;
+                    playerY = y * TILE_SIZE;
+                    break;
+                }
+            }
+        }
+
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean scrolled(float amountX, float amountY) {
-                if (amountY > 0)
-                    selectedSlot = (selectedSlot + 1) % HOTBAR_SLOTS;
-                else if (amountY < 0)
-                    selectedSlot = (selectedSlot - 1 + HOTBAR_SLOTS) % HOTBAR_SLOTS;
+                if (amountY > 0) selectedSlot = (selectedSlot + 1) % HOTBAR_SLOTS;
+                else if (amountY < 0) selectedSlot = (selectedSlot - 1 + HOTBAR_SLOTS) % HOTBAR_SLOTS;
                 return true;
             }
         });
@@ -120,179 +136,220 @@ public class Core extends ApplicationAdapter {
     @Override
     public void render() {
         float delta = Gdx.graphics.getDeltaTime();
-
         camera.position.set(playerX + TILE_SIZE / 2f, playerY + TILE_SIZE / 2f, 0);
         camera.update();
+
         shapeRenderer.setProjectionMatrix(camera.combined);
         batch.setProjectionMatrix(camera.combined);
         ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
 
         float PLAYER_SPEED = 150f;
-        if (Gdx.input.isKeyPressed(Input.Keys.LEFT))  playerX -= PLAYER_SPEED * delta;
-        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) playerX += PLAYER_SPEED * delta;
-        if (Gdx.input.isKeyPressed(Input.Keys.UP))    playerY += PLAYER_SPEED * delta;
-        if (Gdx.input.isKeyPressed(Input.Keys.DOWN))  playerY -= PLAYER_SPEED * delta;
+        float nextX = playerX, nextY = playerY;
+        if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) nextX -= PLAYER_SPEED * delta;
+        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) nextX += PLAYER_SPEED * delta;
+        if (Gdx.input.isKeyPressed(Input.Keys.UP)) nextY += PLAYER_SPEED * delta;
+        if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) nextY -= PLAYER_SPEED * delta;
 
-        playerX = Math.max(0, Math.min(playerX, GRID_WIDTH * TILE_SIZE - TILE_SIZE));
-        playerY = Math.max(0, Math.min(playerY, GRID_HEIGHT * TILE_SIZE - TILE_SIZE));
-
-        // --- SPACE key till/harvest ---
-        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            int tileX = (int)(playerX / TILE_SIZE);
-            int tileY = (int)(playerY / TILE_SIZE);
-            handleTileAction(tileX, tileY);
+        int tx = (int) (nextX / TILE_SIZE);
+        int ty = (int) (nextY / TILE_SIZE);
+        if (inBounds(tx, ty) && ISLAND_MAP[ty][tx] != 0) {
+            playerX = nextX;
+            playerY = nextY;
         }
 
-        // --- Mouse click till/harvest ---
+        oceanRenderer.setView(camera);
+        oceanRenderer.render();
+
+        // --- handle mouse clicks ---
         if (Gdx.input.justTouched()) {
             Vector3 mouse = new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0);
             camera.unproject(mouse);
-
-            int clickedTileX = (int)(mouse.x / TILE_SIZE);
-            int clickedTileY = (int)(mouse.y / TILE_SIZE);
-
-            float distX = Math.abs((int)(playerX / TILE_SIZE) - clickedTileX);
-            float distY = Math.abs((int)(playerY / TILE_SIZE) - clickedTileY);
-            boolean closeEnough = (distX <= 2 && distY <= 2);
-
-            if (clickedTileX >= 0 && clickedTileX < GRID_WIDTH && clickedTileY >= 0 && clickedTileY < GRID_HEIGHT && closeEnough)
-                handleTileAction(clickedTileX, clickedTileY);
+            int mx = (int) (mouse.x / TILE_SIZE);
+            int my = (int) (mouse.y / TILE_SIZE);
+            if (inBounds(mx, my)) {
+                float distX = Math.abs((int) (playerX / TILE_SIZE) - mx);
+                float distY = Math.abs((int) (playerY / TILE_SIZE) - my);
+                if (distX <= 2 && distY <= 2) {
+                    if (Gdx.input.isButtonPressed(Input.Buttons.LEFT))
+                        handleTileToggle(mx, my); // till/un-till
+                    else if (Gdx.input.isButtonPressed(Input.Buttons.RIGHT))
+                        handleHarvest(mx, my); // pick crop
+                }
+            }
         }
 
-        // --- Plant crops ---
-        int tileX = (int)(playerX / TILE_SIZE);
-        int tileY = (int)(playerY / TILE_SIZE);
-        tileX = Math.max(0, Math.min(tileX, GRID_WIDTH - 1));
-        tileY = Math.max(0, Math.min(tileY, GRID_HEIGHT - 1));
+        // --- planting seeds ---
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) || Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
+            int targetX = (int) (playerX / TILE_SIZE);
+            int targetY = (int) (playerY / TILE_SIZE);
+            if (inBounds(targetX, targetY) && farm[targetX][targetY] == TileState.TILLED && crops[targetX][targetY] == null) {
+                CropType type = Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) ? CropType.WHEAT : CropType.CARROT;
+                crops[targetX][targetY] = new Crop(type);
+            }
+        }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) && farm[tileX][tileY] == TileState.TILLED)
-            crops[tileX][tileY] = new Crop(CropType.WHEAT);
-        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2) && farm[tileX][tileY] == TileState.TILLED)
-            crops[tileX][tileY] = new Crop(CropType.CARROT);
-
-        // --- Update crops ---
+        // --- update crops and regrowth ---
         for (int x = 0; x < GRID_WIDTH; x++)
-            for (int y = 0; y < GRID_HEIGHT; y++)
-                if (crops[x][y] != null)
-                    crops[x][y].update(delta);
+            for (int y = 0; y < GRID_HEIGHT; y++) {
+                if (crops[x][y] != null) crops[x][y].update(delta);
 
-        // --- Draw grass background ---
+                if (regrowTimers[x][y] > 0) {
+                    regrowTimers[x][y] -= delta;
+                    if (regrowTimers[x][y] <= 0) {
+                        double chance = random.nextDouble();
+                        if (chance < 0.1) {
+                            Island.DECOR[y][x] = random.nextInt(3) + 1;
+                            Island.FLIP[y][x] = random.nextBoolean();
+                        } else if (chance < 0.15) {
+                            Island.FLOWER[y][x] = random.nextInt(3) + 1;
+                            Island.FLOWER_FLIP[y][x] = random.nextBoolean();
+                        }
+                    }
+                }
+            }
+
+        // --- draw terrain and decor ---
         batch.begin();
         for (int x = 0; x < GRID_WIDTH; x++) {
             for (int y = 0; y < GRID_HEIGHT; y++) {
-                if (farm[x][y] == TileState.EMPTY)
+                if (ISLAND_MAP[y][x] == 1) {
                     batch.draw(grassTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+
+                    int decor = Island.DECOR[y][x];
+                    if (decor > 0) {
+                        Texture decorTex = decor == 1 ? grass1Texture :
+                            decor == 2 ? grass2Texture : grass3Texture;
+                        boolean flip = Island.FLIP[y][x];
+                        float size = TILE_SIZE * 0.9f;
+                        float offset = (TILE_SIZE - size) / 2f;
+                        if (flip)
+                            batch.draw(decorTex, x * TILE_SIZE + offset + size, y * TILE_SIZE + offset, -size, size);
+                        else
+                            batch.draw(decorTex, x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
+                    }
+
+                    int flower = Island.FLOWER[y][x];
+                    if (flower > 0) {
+                        Texture flowerTex = flower == 1 ? flower1Texture :
+                            flower == 2 ? flower2Texture : flower3Texture;
+                        boolean flip = Island.FLOWER_FLIP[y][x];
+                        float size = TILE_SIZE * 0.9f;
+                        float offset = (TILE_SIZE - size) / 2f;
+                        if (flip)
+                            batch.draw(flowerTex, x * TILE_SIZE + offset + size, y * TILE_SIZE + offset, -size, size);
+                        else
+                            batch.draw(flowerTex, x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
+                    }
+
+                } else if (ISLAND_MAP[y][x] == 2) {
+                    batch.draw(sandTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
             }
         }
         batch.end();
 
-        // --- Draw tilled soil & crops ---
+        // --- draw soil and crops ---
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        for (int x = 0; x < GRID_WIDTH; x++) {
+        for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++) {
                 if (farm[x][y] == TileState.TILLED) {
                     shapeRenderer.setColor(0.55f, 0.27f, 0.07f, 1);
                     shapeRenderer.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
-
-                Crop crop = crops[x][y];
-                if (crop != null) {
-                    float size = crop.getSize() * TILE_SIZE;
+                Crop c = crops[x][y];
+                if (c != null) {
+                    float size = c.getSize() * TILE_SIZE;
                     float offset = (TILE_SIZE - size) / 2f;
-                    if (crop.type == CropType.WHEAT) shapeRenderer.setColor(1f, 1f, 0f, 1f);
-                    else if (crop.type == CropType.CARROT) shapeRenderer.setColor(1f, 0.55f, 0.1f, 1f);
+                    shapeRenderer.setColor(c.type == CropType.WHEAT ? 1f : 1f, c.type == CropType.WHEAT ? 1f : 0.55f, c.type == CropType.WHEAT ? 0f : 0.1f, 1f);
                     shapeRenderer.rect(x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
                 }
             }
-        }
         shapeRenderer.end();
 
-        // --- Draw player ---
+        // --- draw player ---
         batch.begin();
-        font.draw(batch, "Gold: " + CurrencyManager.getCurrency(), 10, 460);
-        batch.draw(
-            playerTexture,
+        batch.draw(playerTexture,
             playerX - (playerWidth - TILE_SIZE) / 2f,
             playerY - (playerHeight - TILE_SIZE) / 2f,
-            playerWidth,
-            playerHeight
-        );
+            playerWidth, playerHeight);
         batch.end();
-
-        // --- Draw inventory HUD ---
 
         drawInventory();
     }
 
+    // --- till/un-till logic ---
+    private void handleTileToggle(int x, int y) {
+        if (!inBounds(x, y) || ISLAND_MAP[y][x] != 1) return;
+
+        if (farm[x][y] == TileState.EMPTY) {
+            farm[x][y] = TileState.TILLED;
+            Island.DECOR[y][x] = 0;
+            Island.FLOWER[y][x] = 0;
+        } else {
+            farm[x][y] = TileState.EMPTY;
+            crops[x][y] = null;
+            regrowTimers[x][y] = 60f;
+        }
+    }
+
+    // --- right-click harvest only ---
+    private void handleHarvest(int x, int y) {
+        if (!inBounds(x, y)) return;
+        Crop crop = crops[x][y];
+        if (crop != null && crop.fullyGrown) {
+            int slotIndex = -1;
+            for (int i = 0; i < HOTBAR_SLOTS; i++)
+                if (inventoryItems[i] == null || inventoryItems[i].equals(crop.type.toString())) {
+                    slotIndex = i; break;
+                }
+            if (slotIndex != -1) {
+                if (inventoryItems[slotIndex] == null)
+                    inventoryItems[slotIndex] = crop.type.toString();
+                inventory[slotIndex]++;
+            }
+            crops[x][y] = null;
+        }
+    }
+
+    private boolean inBounds(int x, int y) {
+        return x >= 0 && y >= 0 && x < GRID_WIDTH && y < GRID_HEIGHT;
+    }
+
     private void drawInventory() {
-        int slotCount = HOTBAR_SLOTS;
-        int slotSize = 40;
-        int spacing = 10;
-        int totalWidth = slotCount * slotSize + (slotCount - 1) * spacing;
-        int startX = (Gdx.graphics.getWidth() - totalWidth) / 2;
-        int y = 20;
+        int slotSize = 40, spacing = 10;
+        int totalWidth = HOTBAR_SLOTS * slotSize + (HOTBAR_SLOTS - 1) * spacing;
+        int startX = (Gdx.graphics.getWidth() - totalWidth) / 2, y = 20;
 
-        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
+            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-
-        for (int i = 0; i < slotCount; i++) {
-            if (i == selectedSlot) shapeRenderer.setColor(0.7f, 0.7f, 0.7f, 1);
-            else shapeRenderer.setColor(0.5f, 0.5f, 0.5f, 1);
-            shapeRenderer.rect(startX + i * (slotSize + spacing), y, slotSize, slotSize);
+        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+            int xPos = startX + i * (slotSize + spacing);
+            int border = 2;
+            shapeRenderer.setColor(0f, 0f, 0f, 1f);
+            shapeRenderer.rect(xPos - border, y - border, slotSize + border * 2, slotSize + border * 2);
+            shapeRenderer.setColor(i == selectedSlot ? 0.7f : 0.5f, 0.7f, 0.7f, 1f);
+            shapeRenderer.rect(xPos, y, slotSize, slotSize);
         }
         shapeRenderer.end();
 
-        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
+            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
         batch.begin();
-        for (int i = 0; i < slotCount; i++) {
+        for (int i = 0; i < HOTBAR_SLOTS; i++) {
             if (inventory[i] > 0 && inventoryItems[i] != null) {
-                Texture tex = null;
-                if (inventoryItems[i].equals("WHEAT")) tex = wheatTexture;
-                else if (inventoryItems[i].equals("CARROT")) tex = carrotTexture;
-
+                Texture tex = inventoryItems[i].equals("WHEAT") ? wheatTexture :
+                    inventoryItems[i].equals("CARROT") ? carrotTexture : null;
                 if (tex != null) {
-                    float cropSize = slotSize * 0.9f;
-                    float offset = (slotSize - cropSize) / 2f;
-                    batch.draw(tex, startX + i * (slotSize + spacing) + offset, y + offset, cropSize, cropSize);
+                    float size = slotSize * 0.9f, off = (slotSize - size) / 2f;
+                    batch.draw(tex, startX + i * (slotSize + spacing) + off, y + off, size, size);
                 }
-
-                String text = String.valueOf(inventory[i]);
-                font.draw(batch, text, startX + i * (slotSize + spacing) + slotSize - 14, y + slotSize - 6);
+                font.draw(batch, String.valueOf(inventory[i]),
+                    startX + i * (slotSize + spacing) + slotSize - 14, y + slotSize - 6);
             }
         }
         batch.end();
-    }
-
-    private void handleTileAction(int tileX, int tileY) {
-        TileState current = farm[tileX][tileY];
-        Crop crop = crops[tileX][tileY];
-
-        if (current == TileState.EMPTY) {
-            farm[tileX][tileY] = TileState.TILLED;
-        } else if (current == TileState.TILLED && crop == null) {
-            farm[tileX][tileY] = TileState.EMPTY;
-        } else if (crop != null) {
-            if (crop.fullyGrown) {
-                int slotIndex = -1;
-                for (int i = 0; i < HOTBAR_SLOTS; i++) {
-                    if (inventoryItems[i] == null || inventoryItems[i].equals(crop.type.toString())) {
-                        slotIndex = i;
-                        break;
-                    }
-                }
-
-                if (slotIndex != -1) {
-                    if (inventoryItems[slotIndex] == null)
-                        inventoryItems[slotIndex] = crop.type.toString();
-                    inventory[slotIndex]++;
-                }
-
-                crops[tileX][tileY] = null;
-                farm[tileX][tileY] = TileState.TILLED;
-            } else {
-                crops[tileX][tileY] = null;
-            }
-        }
     }
 
     @Override
@@ -302,7 +359,16 @@ public class Core extends ApplicationAdapter {
         font.dispose();
         playerTexture.dispose();
         grassTexture.dispose();
+        sandTexture.dispose();
         wheatTexture.dispose();
         carrotTexture.dispose();
+        flower1Texture.dispose();
+        flower2Texture.dispose();
+        flower3Texture.dispose();
+        oceanMap.dispose();
+        oceanRenderer.dispose();
+        grass1Texture.dispose();
+        grass2Texture.dispose();
+        grass3Texture.dispose();
     }
 }
