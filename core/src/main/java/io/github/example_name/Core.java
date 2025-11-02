@@ -11,6 +11,10 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.Color;
+
 
 import java.util.Arrays;
 
@@ -79,6 +83,8 @@ public class Core extends ApplicationAdapter {
         shapeRenderer = new ShapeRenderer();
         batch = new SpriteBatch();
         font = new BitmapFont();
+
+        CurrencyManager.setCurrency(100);
 
         playerTexture = new Texture(Gdx.files.internal("farmer.png"));
         grassTexture = new Texture(Gdx.files.internal("grass.png"));
@@ -203,6 +209,7 @@ public class Core extends ApplicationAdapter {
 
         // --- Draw player ---
         batch.begin();
+        font.draw(batch, "Gold: " + CurrencyManager.getCurrency(), 10, 460);
         batch.draw(
             playerTexture,
             playerX - (playerWidth - TILE_SIZE) / 2f,
@@ -213,6 +220,7 @@ public class Core extends ApplicationAdapter {
         batch.end();
 
         // --- Draw inventory HUD ---
+
         drawInventory();
     }
 
