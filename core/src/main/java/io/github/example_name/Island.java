@@ -1,5 +1,7 @@
 package io.github.example_name;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 public class Island {
@@ -11,6 +13,9 @@ public class Island {
 
     public static final int[][] FLOWER = new int[HEIGHT][WIDTH];    // flower decor (1–3)
     public static final boolean[][] FLOWER_FLIP = new boolean[HEIGHT][WIDTH];
+
+    // --- NPC data ---
+    public static final List<NPC> NPCS = new ArrayList<>();
 
     static {
         Random r = new Random(42);
@@ -58,6 +63,9 @@ public class Island {
                 }
             }
         }
+
+        // --- place NPC(s) ---
+        addNPCs(r);
     }
 
     // --- helper methods ---
@@ -86,5 +94,63 @@ public class Island {
     private static double smoothstep(double edge0, double edge1, double x) {
         double t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
         return t * t * (3 - 2 * t);
+    }
+
+    // --- NPC types ---
+    public enum NPCType { GENERIC, FARMER }
+
+    // --- NPC generation ---
+    private static void addNPCs(Random r) {
+        // Place a starter Farmer near the center on grass
+        int fx = WIDTH / 2, fy = HEIGHT / 2;
+        // find nearest grass tile
+        int radius = 8;
+        boolean placed = false;
+        for (int rad = 0; rad <= radius && !placed; rad++) {
+            for (int dy = -rad; dy <= rad && !placed; dy++) {
+                for (int dx = -rad; dx <= rad && !placed; dx++) {
+                    int nx = fx + dx, ny = fy + dy;
+                    if (nx >= 0 && ny >= 0 && nx < WIDTH && ny < HEIGHT && DATA[ny][nx] == 1) {
+                        NPC farmer = new NPC("Farmer", nx, ny,
+                            "Howdy! I’ll buy your crops.", NPCType.FARMER);
+                        NPCS.add(farmer);
+                        placed = true;
+                    }
+                }
+            }
+        }
+
+        // Optionally keep a generic islander elsewhere (random grass)
+        int x, y;
+        do {
+            x = r.nextInt(WIDTH);
+            y = r.nextInt(HEIGHT);
+        } while (DATA[y][x] != 1);
+        NPC generic = new NPC("Islander", x, y, "Welcome to our island!", NPCType.GENERIC);
+        NPCS.add(generic);
+    }
+
+    // --- NPC class ---
+    public static class NPC {
+        public String name;
+        public int x, y;       // tile coordinates
+        public String dialogue;
+        public NPCType type;
+
+        public NPC(String name, int x, int y, String dialogue) {
+            this(name, x, y, dialogue, NPCType.GENERIC);
+        }
+
+        public NPC(String name, int x, int y, String dialogue, NPCType type) {
+            this.name = name;
+            this.x = x;
+            this.y = y;
+            this.dialogue = dialogue;
+            this.type = type;
+        }
+
+        public void talk() {
+            System.out.println(name + ": " + dialogue);
+        }
     }
 }
