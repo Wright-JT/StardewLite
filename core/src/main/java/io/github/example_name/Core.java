@@ -4,6 +4,7 @@ import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.utils.ScreenUtils;
@@ -15,6 +16,7 @@ import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TmxMapLoader;
 import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 
 public class Core extends ApplicationAdapter {
@@ -27,6 +29,11 @@ public class Core extends ApplicationAdapter {
     private Texture playerTexture, grassTexture, sandTexture, wheatTexture, carrotTexture;
     private Texture grass1Texture, grass2Texture, grass3Texture;
     private Texture flower1Texture, flower2Texture, flower3Texture;
+
+    // NEW: HUD coin + Farmer NPC texture
+    private Texture coinTexture;
+    private Texture farmerNpcTexture;
+
     private TiledMap oceanMap;
     private OrthogonalTiledMapRenderer oceanRenderer;
 
@@ -46,6 +53,9 @@ public class Core extends ApplicationAdapter {
     private int selectedSlot = 0;
     private final int[] inventory = new int[HOTBAR_SLOTS];
     private final String[] inventoryItems = new String[HOTBAR_SLOTS];
+
+    // NEW: simple shop state
+    private boolean shopOpen = false;
 
     enum TileState { EMPTY, TILLED }
     enum CropType { WHEAT, CARROT }
@@ -93,6 +103,10 @@ public class Core extends ApplicationAdapter {
         wheatTexture = new Texture(Gdx.files.internal("wheat.png"));
         carrotTexture = new Texture(Gdx.files.internal("carrot.png"));
 
+        // NEW: HUD coin + Farmer NPC texture
+        coinTexture = new Texture(Gdx.files.internal("8bitCoinPNG.png"));
+        farmerNpcTexture = new Texture(Gdx.files.internal("pngtree-farmer-pixel-art-character-icon-design-png-image_8744094.png"));
+
         oceanMap = new TmxMapLoader().load("ocean.tmx");
         oceanRenderer = new OrthogonalTiledMapRenderer(oceanMap, TILE_SIZE / 8f);
 
@@ -111,6 +125,9 @@ public class Core extends ApplicationAdapter {
             }
 
         Arrays.fill(inventory, 0);
+
+        // --- Load saved currency ---
+        CurrencyManager.load();
 
         // --- find spawn on land near center ---
         for (int y = GRID_HEIGHT / 2 - 5; y < GRID_HEIGHT / 2 + 5; y++) {
@@ -260,11 +277,19 @@ public class Core extends ApplicationAdapter {
                 if (c != null) {
                     float size = c.getSize() * TILE_SIZE;
                     float offset = (TILE_SIZE - size) / 2f;
-                    shapeRenderer.setColor(c.type == CropType.WHEAT ? 1f : 1f, c.type == CropType.WHEAT ? 1f : 0.55f, c.type == CropType.WHEAT ? 0f : 0.1f, 1f);
+                    shapeRenderer.setColor(
+                        c.type == CropType.WHEAT ? 1f : 1f,
+                        c.type == CropType.WHEAT ? 1f : 0.55f,
+                        c.type == CropType.WHEAT ? 0f : 0.1f,
+                        1f
+                    );
                     shapeRenderer.rect(x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
                 }
             }
         shapeRenderer.end();
+
+        // --- draw NPCs (Farmer) ---
+        drawNPCs();
 
         // --- draw player ---
         batch.begin();
@@ -274,7 +299,13 @@ public class Core extends ApplicationAdapter {
             playerWidth, playerHeight);
         batch.end();
 
+        // --- interaction: near farmer -> E to open shop ---
+        handleShopInteraction();
+
+        // --- UI: hotbar & HUD (currency + coin) ---
         drawInventory();
+        drawCurrencyHUD();
+        if (shopOpen) drawShopWindow();
     }
 
     // --- till/un-till logic ---
@@ -307,6 +338,11 @@ public class Core extends ApplicationAdapter {
                     inventoryItems[slotIndex] = crop.type.toString();
                 inventory[slotIndex]++;
             }
+
+            // --- Add currency reward per crop type ---
+            int reward = (crop.type == CropType.WHEAT) ? 10 : 20;
+            CurrencyManager.addCurrency(reward);
+
             crops[x][y] = null;
         }
     }
@@ -352,8 +388,169 @@ public class Core extends ApplicationAdapter {
         batch.end();
     }
 
+    // NEW: draw prominent currency HUD with coin icon
+    private void drawCurrencyHUD() {
+        // Switch to screen-space projection
+        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
+            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
+            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+
+        int padding = 12;
+        int iconSize = 32;
+        String text = String.valueOf(CurrencyManager.getCurrency());
+
+        // Measure text by rough estimate (BitmapFont doesn't measure without GlyphLayout; keep it simple)
+        int panelW = 160;
+        int panelH = 54;
+        int x = 14;
+        int y = Gdx.graphics.getHeight() - panelH - 14;
+
+        // Background panel
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0f, 0f, 0f, 0.45f);
+        shapeRenderer.rect(x, y, panelW, panelH);
+        shapeRenderer.setColor(1f, 1f, 1f, 0.12f);
+        shapeRenderer.rect(x, y + panelH - 4, panelW, 4); // subtle top shine
+        shapeRenderer.end();
+
+        // Foreground: coin + big number with drop shadow
+        batch.begin();
+        batch.draw(coinTexture, x + padding, y + (panelH - iconSize) / 2, iconSize, iconSize);
+
+        // Drop shadow
+        font.getData().setScale(2.0f);
+        font.setColor(0, 0, 0, 0.7f);
+        font.draw(batch, text, x + padding + iconSize + 12 + 2, y + panelH - 16 - 2);
+
+        // Main text
+        font.setColor(Color.WHITE);
+        font.draw(batch, text, x + padding + iconSize + 12, y + panelH - 16);
+
+        // Reset font scale/color for other UI
+        font.getData().setScale(1.0f);
+        font.setColor(Color.WHITE);
+        batch.end();
+    }
+
+    // NEW: draw NPCs, currently just Farmer(s)
+    private void drawNPCs() {
+        List<Island.NPC> npcs = Island.NPCS;
+        if (npcs == null || npcs.isEmpty()) return;
+
+        batch.begin();
+        for (Island.NPC npc : npcs) {
+            if (npc.type == Island.NPCType.FARMER) {
+                float nx = npc.x * TILE_SIZE;
+                float ny = npc.y * TILE_SIZE;
+                float scale = 2.0f;
+                float w = TILE_SIZE * scale, h = TILE_SIZE * scale;
+                batch.draw(farmerNpcTexture,
+                    nx - (w - TILE_SIZE) / 2f,
+                    ny - (h - TILE_SIZE) / 2f,
+                    w, h);
+
+                // If player is close, draw a small hint bubble
+                if (isNearPlayer(npc.x, npc.y, 2)) {
+                    // simple hint above head
+                    font.setColor(Color.YELLOW);
+                    font.draw(batch, "Press E to Sell", nx - 10, ny + h + 16);
+                    font.setColor(Color.WHITE);
+                }
+            }
+        }
+        batch.end();
+    }
+
+    private boolean isNearPlayer(int tx, int ty, int radiusTiles) {
+        int px = (int)(playerX / TILE_SIZE);
+        int py = (int)(playerY / TILE_SIZE);
+        return Math.abs(px - tx) <= radiusTiles && Math.abs(py - ty) <= radiusTiles;
+    }
+
+    // NEW: open/close shop + sell all keys
+    private void handleShopInteraction() {
+        // If shop is not open, allow opening when near a farmer and pressing E
+        if (!shopOpen) {
+            for (Island.NPC npc : Island.NPCS) {
+                if (npc.type == Island.NPCType.FARMER && isNearPlayer(npc.x, npc.y, 2)) {
+                    if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+                        shopOpen = true;
+                    }
+                }
+            }
+        } else {
+            // Shop is open: handle input
+            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+                shopOpen = false;
+            }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {
+                int sold = sellAllOf("WHEAT");
+                CurrencyManager.addCurrency(sold * 10);
+            }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
+                int sold = sellAllOf("CARROT");
+                CurrencyManager.addCurrency(sold * 20);
+            }
+        }
+    }
+
+    // NEW: simple modal shop window
+    private void drawShopWindow() {
+        // screen-space
+        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
+            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
+            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+
+        int w = 420, h = 160;
+        int x = (Gdx.graphics.getWidth() - w) / 2;
+        int y = (Gdx.graphics.getHeight() - h) / 2;
+
+        // dim background
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0f, 0f, 0f, 0.5f);
+        shapeRenderer.rect(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+
+        // window
+        shapeRenderer.setColor(0.08f, 0.08f, 0.1f, 0.95f);
+        shapeRenderer.rect(x, y, w, h);
+        shapeRenderer.setColor(1f, 1f, 1f, 0.12f);
+        shapeRenderer.rect(x, y + h - 6, w, 6);
+        shapeRenderer.end();
+
+        batch.begin();
+        font.getData().setScale(1.2f);
+        font.setColor(Color.WHITE);
+        font.draw(batch, "Farmer's Stand", x + 14, y + h - 16);
+        font.getData().setScale(1.0f);
+
+        font.draw(batch, "[1] Sell all WHEAT  (+10 each)", x + 14, y + h - 42);
+        font.draw(batch, "[2] Sell all CARROT (+20 each)", x + 14, y + h - 68);
+        font.setColor(Color.GRAY);
+        font.draw(batch, "ESC to close", x + 14, y + 20);
+        font.setColor(Color.WHITE);
+        batch.end();
+    }
+
+    // NEW: helper to sell-and-clear all of a crop type from the hotbar
+    private int sellAllOf(String type) {
+        int total = 0;
+        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+            if (inventoryItems[i] != null && inventoryItems[i].equals(type)) {
+                total += inventory[i];
+                inventory[i] = 0;
+                inventoryItems[i] = null;
+            }
+        }
+        return total;
+    }
+
     @Override
     public void dispose() {
+        // --- Save currency on exit ---
+        CurrencyManager.save();
+
         shapeRenderer.dispose();
         batch.dispose();
         font.dispose();
@@ -370,5 +567,9 @@ public class Core extends ApplicationAdapter {
         grass1Texture.dispose();
         grass2Texture.dispose();
         grass3Texture.dispose();
+
+        // NEW: dispose added textures
+        if (coinTexture != null) coinTexture.dispose();
+        if (farmerNpcTexture != null) farmerNpcTexture.dispose();
     }
 }
