@@ -135,6 +135,8 @@ public class Core extends ApplicationAdapter {
         Arrays.fill(inventory, 0);
 
         CurrencyManager.load();
+        CurrencyManager.setCurrency(0);
+        CurrencyManager.save();
 
         for (int y = GRID_HEIGHT / 2 - 5; y < GRID_HEIGHT / 2 + 5; y++) {
             for (int x = GRID_WIDTH / 2 - 5; x < GRID_WIDTH / 2 + 5; x++) {
@@ -188,17 +190,22 @@ public class Core extends ApplicationAdapter {
             camera.unproject(mouse);
             int mx = (int) (mouse.x / TILE_SIZE);
             int my = (int) (mouse.y / TILE_SIZE);
+
             if (inBounds(mx, my)) {
-                float distX = Math.abs((int) (playerX / TILE_SIZE) - mx);
-                float distY = Math.abs((int) (playerY / TILE_SIZE) - my);
+                float distX = Math.abs((int)(playerX / TILE_SIZE) - mx);
+                float distY = Math.abs((int)(playerY / TILE_SIZE) - my);
                 if (distX <= 2 && distY <= 2) {
+                    // Left-click = harvest only
                     if (Gdx.input.isButtonPressed(Input.Buttons.LEFT))
-                        handleTileToggle(mx, my);
+                        handleHarvest(mx, my);
+
+                        // Right-click = till or plant seeds
                     else if (Gdx.input.isButtonPressed(Input.Buttons.RIGHT))
                         handleRightClick(mx, my);
                 }
             }
         }
+
 
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++) {
@@ -308,6 +315,13 @@ public class Core extends ApplicationAdapter {
     private void handleTileToggle(int x, int y) {
         if (!inBounds(x, y) || ISLAND_MAP[y][x] != 1) return;
 
+        // If there's a crop here, harvest instead of modifying the soil
+        if (crops[x][y] != null) {
+            handleHarvest(x, y);
+            return;
+        }
+
+        // No crop: toggle tilled state
         if (farm[x][y] == TileState.EMPTY) {
             farm[x][y] = TileState.TILLED;
             Island.DECOR[y][x] = 0;
@@ -318,40 +332,45 @@ public class Core extends ApplicationAdapter {
             regrowTimers[x][y] = 60f;
         }
     }
+
     private void handleRightClick(int x, int y) {
         if (!inBounds(x, y)) return;
+
         float distX = Math.abs((int)(playerX / TILE_SIZE) - x);
         float distY = Math.abs((int)(playerY / TILE_SIZE) - y);
         if (distX > 2 || distY > 2) return;
-        if (farm[x][y] != TileState.TILLED || crops[x][y] != null) return;
 
-        String item = inventoryItems[selectedSlot];
-        if (item == null || inventory[selectedSlot] <= 0) return;
-
-        CropType type = null;
-        switch (item) {
-            case "WHEAT_SEED":
-                type = CropType.WHEAT;
-                break;
-            case "CARROT_SEED":
-                type = CropType.CARROT;
-                break;
-            case "POTATO_SEED":
-                type = CropType.POTATO;
-                break;
-            case "BLUEBERRY_SEED":
-                type = CropType.BLUEBERRY;
-                break;
-            default:
-                break;
+        // --- If there's a fully grown crop, harvest it ---
+        if (crops[x][y] != null) {
+            handleHarvest(x, y);
+            return;
         }
 
-        if (type != null) {
-            crops[x][y] = new Crop(type);
-            inventory[selectedSlot]--;
-            if (inventory[selectedSlot] <= 0) inventoryItems[selectedSlot] = null;
-        } else {
-            handleHarvest(x, y);
+        // --- If soil is EMPTY, till it ---
+        if (ISLAND_MAP[y][x] == 1 && farm[x][y] == TileState.EMPTY) {
+            farm[x][y] = TileState.TILLED;
+            Island.DECOR[y][x] = 0;
+            Island.FLOWER[y][x] = 0;
+            return;
+        }
+
+        // --- If soil is TILLED, try to plant seeds ---
+        if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
+            String item = inventoryItems[selectedSlot];
+            if (item == null || inventory[selectedSlot] <= 0) return;
+
+            CropType type = null;
+            if ("WHEAT_SEED".equals(item)) type = CropType.WHEAT;
+            else if ("CARROT_SEED".equals(item)) type = CropType.CARROT;
+            else if ("POTATO_SEED".equals(item)) type = CropType.POTATO;
+            else if ("BLUEBERRY_SEED".equals(item)) type = CropType.BLUEBERRY;
+
+            if (type != null) {
+                crops[x][y] = new Crop(type);
+                inventory[selectedSlot]--;
+                if (inventory[selectedSlot] <= 0)
+                    inventoryItems[selectedSlot] = null;
+            }
         }
     }
 
