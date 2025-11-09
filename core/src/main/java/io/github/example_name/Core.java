@@ -30,6 +30,7 @@ public class Core extends ApplicationAdapter {
     private Texture wheatTexture, carrotTexture, potatoTexture, blueberryTexture;
     private Texture grass1Texture, grass2Texture, grass3Texture;
     private Texture flower1Texture, flower2Texture, flower3Texture;
+    private Texture dirtTexture;
 
     private Texture wheatSeedTexture, carrotSeedTexture, potatoSeedTexture, blueberrySeedTexture;
 
@@ -106,7 +107,7 @@ public class Core extends ApplicationAdapter {
         carrotTexture = new Texture(Gdx.files.internal("carrot.png"));
         potatoTexture = new Texture(Gdx.files.internal("potato.png"));
         blueberryTexture = new Texture(Gdx.files.internal("blueberry.png"));
-
+        dirtTexture = new Texture(Gdx.files.internal("drytilleddirt.png"));
         wheatSeedTexture = new Texture(Gdx.files.internal("wheatseed.png"));
         carrotSeedTexture = new Texture(Gdx.files.internal("carrotseed.png"));
         potatoSeedTexture = new Texture(Gdx.files.internal("potatoseed.png"));
@@ -195,17 +196,13 @@ public class Core extends ApplicationAdapter {
                 float distX = Math.abs((int)(playerX / TILE_SIZE) - mx);
                 float distY = Math.abs((int)(playerY / TILE_SIZE) - my);
                 if (distX <= 2 && distY <= 2) {
-                    // Left-click = harvest only
                     if (Gdx.input.isButtonPressed(Input.Buttons.LEFT))
-                        handleHarvest(mx, my);
-
-                        // Right-click = till or plant seeds
+                        handleLeftClick(mx, my);
                     else if (Gdx.input.isButtonPressed(Input.Buttons.RIGHT))
                         handleRightClick(mx, my);
                 }
             }
         }
-
 
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++) {
@@ -225,7 +222,6 @@ public class Core extends ApplicationAdapter {
                 }
             }
 
-        // Draw terrain and decor
         batch.begin();
         for (int x = 0; x < GRID_WIDTH; x++) {
             for (int y = 0; y < GRID_HEIGHT; y++) {
@@ -258,45 +254,41 @@ public class Core extends ApplicationAdapter {
                 } else if (ISLAND_MAP[y][x] == 2) {
                     batch.draw(sandTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
-            }
-        }
-        batch.end();
 
-        // Draw soil and crops
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        for (int x = 0; x < GRID_WIDTH; x++)
-            for (int y = 0; y < GRID_HEIGHT; y++) {
+                // ✅ Draw tilled soil (use dirt texture)
                 if (farm[x][y] == TileState.TILLED) {
-                    shapeRenderer.setColor(0.55f, 0.27f, 0.07f, 1);
-                    shapeRenderer.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    batch.draw(dirtTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
+
+                /// ✅ Draw crop
                 Crop c = crops[x][y];
                 if (c != null) {
                     float size = c.getSize() * TILE_SIZE;
                     float offset = (TILE_SIZE - size) / 2f;
-                    // --- inside crop drawing block ---
-                    Color color = Color.WHITE;
+
+                    Texture cropTex = null;
                     switch (c.type) {
                         case WHEAT:
-                            color = new Color(1f, 1f, 0f, 1f);
+                            cropTex = wheatTexture;
                             break;
                         case CARROT:
-                            color = new Color(1f, 0.55f, 0.1f, 1f);
+                            cropTex = carrotTexture;
                             break;
                         case POTATO:
-                            color = new Color(0.6f, 0.4f, 0.2f, 1f);
+                            cropTex = potatoTexture;
                             break;
                         case BLUEBERRY:
-                            color = new Color(0.4f, 0.4f, 1f, 1f);
+                            cropTex = blueberryTexture;
                             break;
                     }
-                    shapeRenderer.setColor(color);
 
-                    shapeRenderer.rect(x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
+                    if (cropTex != null) {
+                        batch.draw(cropTex, x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
+                    }
                 }
             }
-        shapeRenderer.end();
-
+        }
+        batch.end();
         drawNPCs();
 
         batch.begin();
@@ -332,6 +324,24 @@ public class Core extends ApplicationAdapter {
             regrowTimers[x][y] = 60f;
         }
     }
+
+    private void handleLeftClick(int x, int y) {
+        if (!inBounds(x, y)) return;
+
+        // Harvest if a crop is grown
+        Crop crop = crops[x][y];
+        if (crop != null && crop.fullyGrown) {
+            handleHarvest(x, y);
+            return;
+        }
+
+        // If there’s no crop, and the tile is tilled — untill it
+        if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
+            farm[x][y] = TileState.EMPTY;
+            regrowTimers[x][y] = 60f; // start regrow timer for decor/grass
+        }
+    }
+
 
     private void handleRightClick(int x, int y) {
         if (!inBounds(x, y)) return;
@@ -404,10 +414,6 @@ public class Core extends ApplicationAdapter {
                     reward = 100;
                     break;
             }
-            CurrencyManager.addCurrency(reward);
-
-
-
             crops[x][y] = null;
         }
     }
@@ -490,7 +496,7 @@ public class Core extends ApplicationAdapter {
         shapeRenderer.end();
 
         batch.begin();
-        batch.draw(coinTexture, x + padding, y + (panelH - iconSize) / 2, iconSize, iconSize);
+        batch.draw(coinTexture, x + padding, y + (panelH - iconSize) / 2 - 1, iconSize, iconSize);
         font.getData().setScale(2.0f);
         font.setColor(0, 0, 0, 0.7f);
         font.draw(batch, text, x + padding + iconSize + 12 + 2, y + panelH - 16 - 2);
@@ -645,6 +651,7 @@ public class Core extends ApplicationAdapter {
         grass2Texture.dispose();
         grass3Texture.dispose();
         if (coinTexture != null) coinTexture.dispose();
+        if (dirtTexture != null) dirtTexture.dispose();
         if (farmerNpcTexture != null) farmerNpcTexture.dispose();
         if (wheatSeedTexture != null) wheatSeedTexture.dispose();
         if (carrotSeedTexture != null) carrotSeedTexture.dispose();
