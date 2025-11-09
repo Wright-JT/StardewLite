@@ -26,11 +26,14 @@ public class Core extends ApplicationAdapter {
     private BitmapFont font;
     private Random random = new Random();
 
-    private Texture playerTexture, grassTexture, sandTexture, wheatTexture, carrotTexture;
+    private Texture playerTexture, grassTexture, sandTexture;
+    private Texture wheatTexture, carrotTexture, potatoTexture, blueberryTexture;
     private Texture grass1Texture, grass2Texture, grass3Texture;
     private Texture flower1Texture, flower2Texture, flower3Texture;
+    private Texture dirtTexture;
 
-    // NEW: HUD coin + Farmer NPC texture
+    private Texture wheatSeedTexture, carrotSeedTexture, potatoSeedTexture, blueberrySeedTexture;
+
     private Texture coinTexture;
     private Texture farmerNpcTexture;
 
@@ -54,11 +57,11 @@ public class Core extends ApplicationAdapter {
     private final int[] inventory = new int[HOTBAR_SLOTS];
     private final String[] inventoryItems = new String[HOTBAR_SLOTS];
 
-    // NEW: simple shop state
     private boolean shopOpen = false;
+    private boolean shopSellTab = true;
 
     enum TileState { EMPTY, TILLED }
-    enum CropType { WHEAT, CARROT }
+    enum CropType { WHEAT, CARROT, POTATO, BLUEBERRY }
 
     static class Crop {
         float growTime;
@@ -102,8 +105,14 @@ public class Core extends ApplicationAdapter {
         sandTexture = new Texture(Gdx.files.internal("sand.png"));
         wheatTexture = new Texture(Gdx.files.internal("wheat.png"));
         carrotTexture = new Texture(Gdx.files.internal("carrot.png"));
+        potatoTexture = new Texture(Gdx.files.internal("potato.png"));
+        blueberryTexture = new Texture(Gdx.files.internal("blueberry.png"));
+        dirtTexture = new Texture(Gdx.files.internal("drytilleddirt.png"));
+        wheatSeedTexture = new Texture(Gdx.files.internal("wheatseed.png"));
+        carrotSeedTexture = new Texture(Gdx.files.internal("carrotseed.png"));
+        potatoSeedTexture = new Texture(Gdx.files.internal("potatoseed.png"));
+        blueberrySeedTexture = new Texture(Gdx.files.internal("blueberryseed.png"));
 
-        // NEW: HUD coin + Farmer NPC texture
         coinTexture = new Texture(Gdx.files.internal("8bitCoinPNG.png"));
         farmerNpcTexture = new Texture(Gdx.files.internal("pngtree-farmer-pixel-art-character-icon-design-png-image_8744094.png"));
 
@@ -126,10 +135,10 @@ public class Core extends ApplicationAdapter {
 
         Arrays.fill(inventory, 0);
 
-        // --- Load saved currency ---
         CurrencyManager.load();
+        CurrencyManager.setCurrency(0);
+        CurrencyManager.save();
 
-        // --- find spawn on land near center ---
         for (int y = GRID_HEIGHT / 2 - 5; y < GRID_HEIGHT / 2 + 5; y++) {
             for (int x = GRID_WIDTH / 2 - 5; x < GRID_WIDTH / 2 + 5; x++) {
                 if (ISLAND_MAP[y][x] == 1) {
@@ -177,39 +186,27 @@ public class Core extends ApplicationAdapter {
         oceanRenderer.setView(camera);
         oceanRenderer.render();
 
-        // --- handle mouse clicks ---
         if (Gdx.input.justTouched()) {
             Vector3 mouse = new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0);
             camera.unproject(mouse);
             int mx = (int) (mouse.x / TILE_SIZE);
             int my = (int) (mouse.y / TILE_SIZE);
+
             if (inBounds(mx, my)) {
-                float distX = Math.abs((int) (playerX / TILE_SIZE) - mx);
-                float distY = Math.abs((int) (playerY / TILE_SIZE) - my);
+                float distX = Math.abs((int)(playerX / TILE_SIZE) - mx);
+                float distY = Math.abs((int)(playerY / TILE_SIZE) - my);
                 if (distX <= 2 && distY <= 2) {
                     if (Gdx.input.isButtonPressed(Input.Buttons.LEFT))
-                        handleTileToggle(mx, my); // till/un-till
+                        handleLeftClick(mx, my);
                     else if (Gdx.input.isButtonPressed(Input.Buttons.RIGHT))
-                        handleHarvest(mx, my); // pick crop
+                        handleRightClick(mx, my);
                 }
             }
         }
 
-        // --- planting seeds ---
-        if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) || Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
-            int targetX = (int) (playerX / TILE_SIZE);
-            int targetY = (int) (playerY / TILE_SIZE);
-            if (inBounds(targetX, targetY) && farm[targetX][targetY] == TileState.TILLED && crops[targetX][targetY] == null) {
-                CropType type = Gdx.input.isKeyJustPressed(Input.Keys.NUM_1) ? CropType.WHEAT : CropType.CARROT;
-                crops[targetX][targetY] = new Crop(type);
-            }
-        }
-
-        // --- update crops and regrowth ---
         for (int x = 0; x < GRID_WIDTH; x++)
             for (int y = 0; y < GRID_HEIGHT; y++) {
                 if (crops[x][y] != null) crops[x][y].update(delta);
-
                 if (regrowTimers[x][y] > 0) {
                     regrowTimers[x][y] -= delta;
                     if (regrowTimers[x][y] <= 0) {
@@ -225,13 +222,11 @@ public class Core extends ApplicationAdapter {
                 }
             }
 
-        // --- draw terrain and decor ---
         batch.begin();
         for (int x = 0; x < GRID_WIDTH; x++) {
             for (int y = 0; y < GRID_HEIGHT; y++) {
                 if (ISLAND_MAP[y][x] == 1) {
                     batch.draw(grassTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-
                     int decor = Island.DECOR[y][x];
                     if (decor > 0) {
                         Texture decorTex = decor == 1 ? grass1Texture :
@@ -244,7 +239,6 @@ public class Core extends ApplicationAdapter {
                         else
                             batch.draw(decorTex, x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
                     }
-
                     int flower = Island.FLOWER[y][x];
                     if (flower > 0) {
                         Texture flowerTex = flower == 1 ? flower1Texture :
@@ -257,41 +251,46 @@ public class Core extends ApplicationAdapter {
                         else
                             batch.draw(flowerTex, x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
                     }
-
                 } else if (ISLAND_MAP[y][x] == 2) {
                     batch.draw(sandTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
-            }
-        }
-        batch.end();
 
-        // --- draw soil and crops ---
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        for (int x = 0; x < GRID_WIDTH; x++)
-            for (int y = 0; y < GRID_HEIGHT; y++) {
+                // ✅ Draw tilled soil (use dirt texture)
                 if (farm[x][y] == TileState.TILLED) {
-                    shapeRenderer.setColor(0.55f, 0.27f, 0.07f, 1);
-                    shapeRenderer.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    batch.draw(dirtTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
+
+                /// ✅ Draw crop
                 Crop c = crops[x][y];
                 if (c != null) {
                     float size = c.getSize() * TILE_SIZE;
                     float offset = (TILE_SIZE - size) / 2f;
-                    shapeRenderer.setColor(
-                        c.type == CropType.WHEAT ? 1f : 1f,
-                        c.type == CropType.WHEAT ? 1f : 0.55f,
-                        c.type == CropType.WHEAT ? 0f : 0.1f,
-                        1f
-                    );
-                    shapeRenderer.rect(x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
+
+                    Texture cropTex = null;
+                    switch (c.type) {
+                        case WHEAT:
+                            cropTex = wheatTexture;
+                            break;
+                        case CARROT:
+                            cropTex = carrotTexture;
+                            break;
+                        case POTATO:
+                            cropTex = potatoTexture;
+                            break;
+                        case BLUEBERRY:
+                            cropTex = blueberryTexture;
+                            break;
+                    }
+
+                    if (cropTex != null) {
+                        batch.draw(cropTex, x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
+                    }
                 }
             }
-        shapeRenderer.end();
-
-        // --- draw NPCs (Farmer) ---
+        }
+        batch.end();
         drawNPCs();
 
-        // --- draw player ---
         batch.begin();
         batch.draw(playerTexture,
             playerX - (playerWidth - TILE_SIZE) / 2f,
@@ -299,19 +298,22 @@ public class Core extends ApplicationAdapter {
             playerWidth, playerHeight);
         batch.end();
 
-        // --- interaction: near farmer -> E to open shop ---
         handleShopInteraction();
-
-        // --- UI: hotbar & HUD (currency + coin) ---
         drawInventory();
         drawCurrencyHUD();
         if (shopOpen) drawShopWindow();
     }
 
-    // --- till/un-till logic ---
     private void handleTileToggle(int x, int y) {
         if (!inBounds(x, y) || ISLAND_MAP[y][x] != 1) return;
 
+        // If there's a crop here, harvest instead of modifying the soil
+        if (crops[x][y] != null) {
+            handleHarvest(x, y);
+            return;
+        }
+
+        // No crop: toggle tilled state
         if (farm[x][y] == TileState.EMPTY) {
             farm[x][y] = TileState.TILLED;
             Island.DECOR[y][x] = 0;
@@ -323,7 +325,66 @@ public class Core extends ApplicationAdapter {
         }
     }
 
-    // --- right-click harvest only ---
+    private void handleLeftClick(int x, int y) {
+        if (!inBounds(x, y)) return;
+
+        // Harvest if a crop is grown
+        Crop crop = crops[x][y];
+        if (crop != null && crop.fullyGrown) {
+            handleHarvest(x, y);
+            return;
+        }
+
+        // If there’s no crop, and the tile is tilled — untill it
+        if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
+            farm[x][y] = TileState.EMPTY;
+            regrowTimers[x][y] = 60f; // start regrow timer for decor/grass
+        }
+    }
+
+
+    private void handleRightClick(int x, int y) {
+        if (!inBounds(x, y)) return;
+
+        float distX = Math.abs((int)(playerX / TILE_SIZE) - x);
+        float distY = Math.abs((int)(playerY / TILE_SIZE) - y);
+        if (distX > 2 || distY > 2) return;
+
+        // --- If there's a fully grown crop, harvest it ---
+        if (crops[x][y] != null) {
+            handleHarvest(x, y);
+            return;
+        }
+
+        // --- If soil is EMPTY, till it ---
+        if (ISLAND_MAP[y][x] == 1 && farm[x][y] == TileState.EMPTY) {
+            farm[x][y] = TileState.TILLED;
+            Island.DECOR[y][x] = 0;
+            Island.FLOWER[y][x] = 0;
+            return;
+        }
+
+        // --- If soil is TILLED, try to plant seeds ---
+        if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
+            String item = inventoryItems[selectedSlot];
+            if (item == null || inventory[selectedSlot] <= 0) return;
+
+            CropType type = null;
+            if ("WHEAT_SEED".equals(item)) type = CropType.WHEAT;
+            else if ("CARROT_SEED".equals(item)) type = CropType.CARROT;
+            else if ("POTATO_SEED".equals(item)) type = CropType.POTATO;
+            else if ("BLUEBERRY_SEED".equals(item)) type = CropType.BLUEBERRY;
+
+            if (type != null) {
+                crops[x][y] = new Crop(type);
+                inventory[selectedSlot]--;
+                if (inventory[selectedSlot] <= 0)
+                    inventoryItems[selectedSlot] = null;
+            }
+        }
+    }
+
+
     private void handleHarvest(int x, int y) {
         if (!inBounds(x, y)) return;
         Crop crop = crops[x][y];
@@ -338,11 +399,21 @@ public class Core extends ApplicationAdapter {
                     inventoryItems[slotIndex] = crop.type.toString();
                 inventory[slotIndex]++;
             }
-
-            // --- Add currency reward per crop type ---
-            int reward = (crop.type == CropType.WHEAT) ? 10 : 20;
-            CurrencyManager.addCurrency(reward);
-
+            int reward = 0;
+            switch (crop.type) {
+                case WHEAT:
+                    reward = 10;
+                    break;
+                case CARROT:
+                    reward = 20;
+                    break;
+                case POTATO:
+                    reward = 50;
+                    break;
+                case BLUEBERRY:
+                    reward = 100;
+                    break;
+            }
             crops[x][y] = null;
         }
     }
@@ -356,41 +427,54 @@ public class Core extends ApplicationAdapter {
         int totalWidth = HOTBAR_SLOTS * slotSize + (HOTBAR_SLOTS - 1) * spacing;
         int startX = (Gdx.graphics.getWidth() - totalWidth) / 2, y = 20;
 
-        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
-            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
+            0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         for (int i = 0; i < HOTBAR_SLOTS; i++) {
             int xPos = startX + i * (slotSize + spacing);
             int border = 2;
             shapeRenderer.setColor(0f, 0f, 0f, 1f);
-            shapeRenderer.rect(xPos - border, y - border, slotSize + border * 2, slotSize + border * 2);
+            shapeRenderer.rect(xPos - border, y - border,
+                slotSize + border * 2, slotSize + border * 2);
             shapeRenderer.setColor(i == selectedSlot ? 0.7f : 0.5f, 0.7f, 0.7f, 1f);
             shapeRenderer.rect(xPos, y, slotSize, slotSize);
         }
         shapeRenderer.end();
 
-        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
-            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
+            0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+
         batch.begin();
         for (int i = 0; i < HOTBAR_SLOTS; i++) {
             if (inventory[i] > 0 && inventoryItems[i] != null) {
-                Texture tex = inventoryItems[i].equals("WHEAT") ? wheatTexture :
-                    inventoryItems[i].equals("CARROT") ? carrotTexture : null;
+                Texture tex = null;
+                String item = inventoryItems[i];
+                if ("WHEAT".equals(item)) tex = wheatTexture;
+                else if ("CARROT".equals(item)) tex = carrotTexture;
+                else if ("POTATO".equals(item)) tex = potatoTexture;
+                else if ("BLUEBERRY".equals(item)) tex = blueberryTexture;
+                else if ("WHEAT_SEED".equals(item)) tex = wheatSeedTexture;
+                else if ("CARROT_SEED".equals(item)) tex = carrotSeedTexture;
+                else if ("POTATO_SEED".equals(item)) tex = potatoSeedTexture;
+                else if ("BLUEBERRY_SEED".equals(item)) tex = blueberrySeedTexture;
+
                 if (tex != null) {
-                    float size = slotSize * 0.9f, off = (slotSize - size) / 2f;
-                    batch.draw(tex, startX + i * (slotSize + spacing) + off, y + off, size, size);
+                    float size = slotSize * 0.9f;
+                    float off = (slotSize - size) / 2f;
+                    batch.draw(tex, startX + i * (slotSize + spacing) + off,
+                        y + off, size, size);
                 }
                 font.draw(batch, String.valueOf(inventory[i]),
-                    startX + i * (slotSize + spacing) + slotSize - 14, y + slotSize - 6);
+                    startX + i * (slotSize + spacing) + slotSize - 14,
+                    y + slotSize - 6);
             }
         }
         batch.end();
     }
 
-    // NEW: draw prominent currency HUD with coin icon
+
     private void drawCurrencyHUD() {
-        // Switch to screen-space projection
         shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
             Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
         batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
@@ -399,45 +483,32 @@ public class Core extends ApplicationAdapter {
         int padding = 12;
         int iconSize = 32;
         String text = String.valueOf(CurrencyManager.getCurrency());
-
-        // Measure text by rough estimate (BitmapFont doesn't measure without GlyphLayout; keep it simple)
         int panelW = 160;
         int panelH = 54;
         int x = 14;
         int y = Gdx.graphics.getHeight() - panelH - 14;
 
-        // Background panel
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(0f, 0f, 0f, 0.45f);
         shapeRenderer.rect(x, y, panelW, panelH);
         shapeRenderer.setColor(1f, 1f, 1f, 0.12f);
-        shapeRenderer.rect(x, y + panelH - 4, panelW, 4); // subtle top shine
+        shapeRenderer.rect(x, y + panelH - 4, panelW, 4);
         shapeRenderer.end();
 
-        // Foreground: coin + big number with drop shadow
         batch.begin();
-        batch.draw(coinTexture, x + padding, y + (panelH - iconSize) / 2, iconSize, iconSize);
-
-        // Drop shadow
+        batch.draw(coinTexture, x + padding, y + (panelH - iconSize) / 2 - 1, iconSize, iconSize);
         font.getData().setScale(2.0f);
         font.setColor(0, 0, 0, 0.7f);
         font.draw(batch, text, x + padding + iconSize + 12 + 2, y + panelH - 16 - 2);
-
-        // Main text
         font.setColor(Color.WHITE);
         font.draw(batch, text, x + padding + iconSize + 12, y + panelH - 16);
-
-        // Reset font scale/color for other UI
         font.getData().setScale(1.0f);
-        font.setColor(Color.WHITE);
         batch.end();
     }
 
-    // NEW: draw NPCs, currently just Farmer(s)
     private void drawNPCs() {
         List<Island.NPC> npcs = Island.NPCS;
         if (npcs == null || npcs.isEmpty()) return;
-
         batch.begin();
         for (Island.NPC npc : npcs) {
             if (npc.type == Island.NPCType.FARMER) {
@@ -449,12 +520,9 @@ public class Core extends ApplicationAdapter {
                     nx - (w - TILE_SIZE) / 2f,
                     ny - (h - TILE_SIZE) / 2f,
                     w, h);
-
-                // If player is close, draw a small hint bubble
                 if (isNearPlayer(npc.x, npc.y, 2)) {
-                    // simple hint above head
                     font.setColor(Color.YELLOW);
-                    font.draw(batch, "Press E to Sell", nx - 10, ny + h + 16);
+                    font.draw(batch, "Press E to Trade", nx - 10, ny + h + 16);
                     font.setColor(Color.WHITE);
                 }
             }
@@ -468,72 +536,86 @@ public class Core extends ApplicationAdapter {
         return Math.abs(px - tx) <= radiusTiles && Math.abs(py - ty) <= radiusTiles;
     }
 
-    // NEW: open/close shop + sell all keys
     private void handleShopInteraction() {
-        // If shop is not open, allow opening when near a farmer and pressing E
         if (!shopOpen) {
             for (Island.NPC npc : Island.NPCS) {
                 if (npc.type == Island.NPCType.FARMER && isNearPlayer(npc.x, npc.y, 2)) {
-                    if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
-                        shopOpen = true;
-                    }
+                    if (Gdx.input.isKeyJustPressed(Input.Keys.E)) shopOpen = true;
                 }
             }
         } else {
-            // Shop is open: handle input
-            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
-                shopOpen = false;
-            }
-            if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {
-                int sold = sellAllOf("WHEAT");
-                CurrencyManager.addCurrency(sold * 10);
-            }
-            if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
-                int sold = sellAllOf("CARROT");
-                CurrencyManager.addCurrency(sold * 20);
+            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) shopOpen = false;
+            if (Gdx.input.isKeyJustPressed(Input.Keys.TAB)) shopSellTab = !shopSellTab;
+
+            if (shopSellTab) {
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) { int s = sellAllOf("WHEAT"); CurrencyManager.addCurrency(s * 10); }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) { int s = sellAllOf("CARROT"); CurrencyManager.addCurrency(s * 20); }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) { int s = sellAllOf("POTATO"); CurrencyManager.addCurrency(s * 50); }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_4)) { int s = sellAllOf("BLUEBERRY"); CurrencyManager.addCurrency(s * 100); }
+            } else {
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) buySeed("WHEAT_SEED", 0);
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) buySeed("CARROT_SEED", 10);
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) buySeed("POTATO_SEED", 20);
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_4)) buySeed("BLUEBERRY_SEED", 40);
             }
         }
     }
 
-    // NEW: simple modal shop window
+    private void buySeed(String seed, int cost) {
+        if (CurrencyManager.getCurrency() < cost) return;
+        int slot = -1;
+        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+            if (inventoryItems[i] == null || inventoryItems[i].equals(seed)) { slot = i; break; }
+        }
+        if (slot != -1) {
+            if (inventoryItems[slot] == null) inventoryItems[slot] = seed;
+            inventory[slot]++;
+            CurrencyManager.addCurrency(-cost);
+        }
+    }
+
     private void drawShopWindow() {
-        // screen-space
         shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
             Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
         batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
             Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
 
-        int w = 420, h = 160;
+        int w = 420, h = 200;
         int x = (Gdx.graphics.getWidth() - w) / 2;
         int y = (Gdx.graphics.getHeight() - h) / 2;
 
-        // dim background
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(0f, 0f, 0f, 0.5f);
         shapeRenderer.rect(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-
-        // window
         shapeRenderer.setColor(0.08f, 0.08f, 0.1f, 0.95f);
         shapeRenderer.rect(x, y, w, h);
-        shapeRenderer.setColor(1f, 1f, 1f, 0.12f);
-        shapeRenderer.rect(x, y + h - 6, w, 6);
         shapeRenderer.end();
 
         batch.begin();
         font.getData().setScale(1.2f);
         font.setColor(Color.WHITE);
-        font.draw(batch, "Farmer's Stand", x + 14, y + h - 16);
+        font.draw(batch, "Farmer's Stand (" + (shopSellTab ? "Sell" : "Buy") + ")", x + 14, y + h - 16);
         font.getData().setScale(1.0f);
 
-        font.draw(batch, "[1] Sell all WHEAT  (+10 each)", x + 14, y + h - 42);
-        font.draw(batch, "[2] Sell all CARROT (+20 each)", x + 14, y + h - 68);
-        font.setColor(Color.GRAY);
-        font.draw(batch, "ESC to close", x + 14, y + 20);
+        if (shopSellTab) {
+            font.draw(batch, "[1] Sell all WHEAT (+10)", x + 14, y + h - 42);
+            font.draw(batch, "[2] Sell all CARROT (+20)", x + 14, y + h - 68);
+            font.draw(batch, "[3] Sell all POTATO (+50)", x + 14, y + h - 94);
+            font.draw(batch, "[4] Sell all BLUEBERRY (+100)", x + 14, y + h - 120);
+            font.setColor(Color.GRAY);
+            font.draw(batch, "TAB to switch to Buy, ESC to close", x + 14, y + 20);
+        } else {
+            font.draw(batch, "[1] Buy WHEAT SEED (0)", x + 14, y + h - 42);
+            font.draw(batch, "[2] Buy CARROT SEED (10)", x + 14, y + h - 68);
+            font.draw(batch, "[3] Buy POTATO SEED (20)", x + 14, y + h - 94);
+            font.draw(batch, "[4] Buy BLUEBERRY SEED (40)", x + 14, y + h - 120);
+            font.setColor(Color.GRAY);
+            font.draw(batch, "TAB to switch to Sell, ESC to close", x + 14, y + 20);
+        }
         font.setColor(Color.WHITE);
         batch.end();
     }
 
-    // NEW: helper to sell-and-clear all of a crop type from the hotbar
     private int sellAllOf(String type) {
         int total = 0;
         for (int i = 0; i < HOTBAR_SLOTS; i++) {
@@ -548,7 +630,6 @@ public class Core extends ApplicationAdapter {
 
     @Override
     public void dispose() {
-        // --- Save currency on exit ---
         CurrencyManager.save();
 
         shapeRenderer.dispose();
@@ -559,6 +640,8 @@ public class Core extends ApplicationAdapter {
         sandTexture.dispose();
         wheatTexture.dispose();
         carrotTexture.dispose();
+        potatoTexture.dispose();
+        blueberryTexture.dispose();
         flower1Texture.dispose();
         flower2Texture.dispose();
         flower3Texture.dispose();
@@ -567,9 +650,12 @@ public class Core extends ApplicationAdapter {
         grass1Texture.dispose();
         grass2Texture.dispose();
         grass3Texture.dispose();
-
-        // NEW: dispose added textures
         if (coinTexture != null) coinTexture.dispose();
+        if (dirtTexture != null) dirtTexture.dispose();
         if (farmerNpcTexture != null) farmerNpcTexture.dispose();
+        if (wheatSeedTexture != null) wheatSeedTexture.dispose();
+        if (carrotSeedTexture != null) carrotSeedTexture.dispose();
+        if (potatoSeedTexture != null) potatoSeedTexture.dispose();
+        if (blueberrySeedTexture != null) blueberrySeedTexture.dispose();
     }
 }
