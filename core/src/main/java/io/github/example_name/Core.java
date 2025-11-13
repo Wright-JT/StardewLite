@@ -18,6 +18,8 @@ import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import com.badlogic.gdx.graphics.GL20;
+
 
 public class Core extends ApplicationAdapter {
     private ShapeRenderer shapeRenderer;
@@ -31,14 +33,25 @@ public class Core extends ApplicationAdapter {
     private Texture grass1Texture, grass2Texture, grass3Texture;
     private Texture flower1Texture, flower2Texture, flower3Texture;
     private Texture dirtTexture;
-
     private Texture wheatSeedTexture, carrotSeedTexture, potatoSeedTexture, blueberrySeedTexture;
-
     private Texture coinTexture;
     private Texture farmerNpcTexture;
-
+    private Chat chat;
     private TiledMap oceanMap;
     private OrthogonalTiledMapRenderer oceanRenderer;
+    private UI ui;
+
+    // Health / hunger
+    private float maxHealth = 100f;
+    private float health = 100f;
+
+    private float maxHunger = 100f;
+    private float hunger = 100f;
+
+    // Rates
+    private static final float HUNGER_DRAIN_PER_SECOND = 1.0f;      // hunger lost per second
+    private static final float HEALTH_STARVE_DRAIN_PER_SECOND = 2.0f; // health lost per second at 0 hunger
+    private static final float HEALTH_REGEN_PER_SECOND = 1.5f;      // health gained per second at full hunger
 
     private final int[][] ISLAND_MAP = Island.DATA;
     private final int GRID_HEIGHT = Island.HEIGHT;
@@ -56,7 +69,7 @@ public class Core extends ApplicationAdapter {
     private int selectedSlot = 0;
     private final int[] inventory = new int[HOTBAR_SLOTS];
     private final String[] inventoryItems = new String[HOTBAR_SLOTS];
-
+    private float spawnX, spawnY;
     private boolean shopOpen = false;
     private boolean shopSellTab = true;
 
@@ -88,10 +101,12 @@ public class Core extends ApplicationAdapter {
         camera = new OrthographicCamera(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         camera.position.set(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f, 0);
         camera.update();
-
+        font = new BitmapFont();
+        chat = new Chat();
         shapeRenderer = new ShapeRenderer();
         batch = new SpriteBatch();
         font = new BitmapFont();
+        ui = new UI();
 
         // --- Load textures ---
         grass1Texture = new Texture(Gdx.files.internal("grass1.png"));
@@ -144,10 +159,17 @@ public class Core extends ApplicationAdapter {
                 if (ISLAND_MAP[y][x] == 1) {
                     playerX = x * TILE_SIZE;
                     playerY = y * TILE_SIZE;
+
+                    // ✅ store spawn for respawn
+                    spawnX = playerX;
+                    spawnY = playerY;
+
                     break;
                 }
             }
         }
+
+
 
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
@@ -162,6 +184,10 @@ public class Core extends ApplicationAdapter {
     @Override
     public void render() {
         float delta = Gdx.graphics.getDeltaTime();
+
+        // Update chat input
+        chat.update();
+        updateNeeds(delta);
         camera.position.set(playerX + TILE_SIZE / 2f, playerY + TILE_SIZE / 2f, 0);
         camera.update();
 
@@ -171,11 +197,16 @@ public class Core extends ApplicationAdapter {
 
         float PLAYER_SPEED = 150f;
         float nextX = playerX, nextY = playerY;
-        if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) nextX -= PLAYER_SPEED * delta;
-        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) nextX += PLAYER_SPEED * delta;
-        if (Gdx.input.isKeyPressed(Input.Keys.UP)) nextY += PLAYER_SPEED * delta;
-        if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) nextY -= PLAYER_SPEED * delta;
 
+        // Only move when chat is not active AND player is alive
+        if (!chat.isActive() && health > 0f) {
+            if (Gdx.input.isKeyPressed(Input.Keys.LEFT))  nextX -= PLAYER_SPEED * delta;
+            if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) nextX += PLAYER_SPEED * delta;
+            if (Gdx.input.isKeyPressed(Input.Keys.UP))    nextY += PLAYER_SPEED * delta;
+            if (Gdx.input.isKeyPressed(Input.Keys.DOWN))  nextY -= PLAYER_SPEED * delta;
+        }
+
+        // ✅ collision + apply
         int tx = (int) (nextX / TILE_SIZE);
         int ty = (int) (nextY / TILE_SIZE);
         if (inBounds(tx, ty) && ISLAND_MAP[ty][tx] != 0) {
@@ -186,7 +217,7 @@ public class Core extends ApplicationAdapter {
         oceanRenderer.setView(camera);
         oceanRenderer.render();
 
-        if (Gdx.input.justTouched()) {
+        if (health > 0f && Gdx.input.justTouched()) {
             Vector3 mouse = new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0);
             camera.unproject(mouse);
             int mx = (int) (mouse.x / TILE_SIZE);
@@ -201,6 +232,24 @@ public class Core extends ApplicationAdapter {
                     else if (Gdx.input.isButtonPressed(Input.Buttons.RIGHT))
                         handleRightClick(mx, my);
                 }
+            }
+        }
+        // --- Eating food with E ---
+        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+            String item = inventoryItems[selectedSlot];
+
+            if (item != null &&
+                (item.equals("CARROT") || item.equals("POTATO") || item.equals("BLUEBERRY"))) {
+
+                // consume one from inventory
+                inventory[selectedSlot]--;
+                if (inventory[selectedSlot] <= 0) {
+                    inventory[selectedSlot] = 0;
+                    inventoryItems[selectedSlot] = null;
+                }
+
+                // refill hunger completely
+                hunger = maxHunger;
             }
         }
 
@@ -259,8 +308,7 @@ public class Core extends ApplicationAdapter {
                 if (farm[x][y] == TileState.TILLED) {
                     batch.draw(dirtTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
-
-                /// ✅ Draw crop
+                ///  Draw crop
                 Crop c = crops[x][y];
                 if (c != null) {
                     float size = c.getSize() * TILE_SIZE;
@@ -302,7 +350,23 @@ public class Core extends ApplicationAdapter {
         drawInventory();
         drawCurrencyHUD();
         if (shopOpen) drawShopWindow();
+        chat.draw(shapeRenderer, batch, font);
+
+// ✅ Draw health/hunger + death overlay, and check for respawn click
+        boolean respawnClicked = ui.draw(shapeRenderer, batch, font,
+            health, maxHealth, hunger, maxHunger);
+
+        if (respawnClicked) {
+            respawnPlayer();
+        }
+        // ✅ Check if the UI requested the game to close (options menu)
+        if (ui.pollCloseRequested()) {
+            Gdx.app.exit();
+        }
+
     }
+
+
 
     private void handleTileToggle(int x, int y) {
         if (!inBounds(x, y) || ISLAND_MAP[y][x] != 1) return;
@@ -323,6 +387,46 @@ public class Core extends ApplicationAdapter {
             crops[x][y] = null;
             regrowTimers[x][y] = 60f;
         }
+    }
+    private void respawnPlayer() {
+        // Reset stats
+        health = maxHealth;
+        hunger = maxHunger;
+
+        // Move back to spawn
+        playerX = spawnX;
+        playerY = spawnY;
+
+        // ✅ Reset gold to 0
+        CurrencyManager.setCurrency(0);
+        CurrencyManager.save(); // optional, but keeps it persisted
+
+        // ✅ Clear inventory items
+        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+            inventory[i] = 0;
+            inventoryItems[i] = null;
+        }
+    }
+
+
+    private void updateNeeds(float delta) {
+        // Hunger drains over time
+        hunger -= HUNGER_DRAIN_PER_SECOND * delta;
+        if (hunger < 0f) hunger = 0f;
+        if (hunger > maxHunger) hunger = maxHunger;
+
+        // If hunger is 0, health drains
+        if (hunger <= 0f) {
+            health -= HEALTH_STARVE_DRAIN_PER_SECOND * delta;
+        }
+        // If hunger is full, health slowly regenerates
+        else if (hunger >= maxHunger) {
+            health += HEALTH_REGEN_PER_SECOND * delta;
+        }
+
+        // Clamp health
+        if (health < 0f) health = 0f;
+        if (health > maxHealth) health = maxHealth;
     }
 
     private void handleLeftClick(int x, int y) {
@@ -346,9 +450,31 @@ public class Core extends ApplicationAdapter {
     private void handleRightClick(int x, int y) {
         if (!inBounds(x, y)) return;
 
-        float distX = Math.abs((int)(playerX / TILE_SIZE) - x);
-        float distY = Math.abs((int)(playerY / TILE_SIZE) - y);
+        int px = (int)(playerX / TILE_SIZE);
+        int py = (int)(playerY / TILE_SIZE);
+
+        float distX = Math.abs(px - x);
+        float distY = Math.abs(py - y);
         if (distX > 2 || distY > 2) return;
+
+        // --- EATING LOGIC: right-click on your own tile with food in selected slot ---
+        String item = inventoryItems[selectedSlot];
+        if (x == px && y == py && item != null &&
+            (item.equals("CARROT") || item.equals("POTATO") || item.equals("BLUEBERRY"))) {
+
+            // consume one from inventory
+            inventory[selectedSlot]--;
+            if (inventory[selectedSlot] <= 0) {
+                inventory[selectedSlot] = 0;
+                inventoryItems[selectedSlot] = null;
+            }
+
+            // refill hunger bar
+            hunger = maxHunger;
+            return; // do not also interact with soil/crops
+        }
+
+        // --- existing logic below this line ---
 
         // --- If there's a fully grown crop, harvest it ---
         if (crops[x][y] != null) {
@@ -366,7 +492,7 @@ public class Core extends ApplicationAdapter {
 
         // --- If soil is TILLED, try to plant seeds ---
         if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
-            String item = inventoryItems[selectedSlot];
+            item = inventoryItems[selectedSlot]; // re-read
             if (item == null || inventory[selectedSlot] <= 0) return;
 
             CropType type = null;
@@ -383,6 +509,7 @@ public class Core extends ApplicationAdapter {
             }
         }
     }
+
 
 
     private void handleHarvest(int x, int y) {
@@ -475,10 +602,10 @@ public class Core extends ApplicationAdapter {
 
 
     private void drawCurrencyHUD() {
-        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
-            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
-        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
-            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
+            0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
+            0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
 
         int padding = 12;
         int iconSize = 32;
@@ -488,23 +615,31 @@ public class Core extends ApplicationAdapter {
         int x = 14;
         int y = Gdx.graphics.getHeight() - panelH - 14;
 
+        // ✅ Enable blending so alpha works
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0f, 0f, 0f, 0.45f);
+        shapeRenderer.setColor(0f, 0f, 0f, 0.25f);   // 40% opaque
         shapeRenderer.rect(x, y, panelW, panelH);
-        shapeRenderer.setColor(1f, 1f, 1f, 0.12f);
+        shapeRenderer.setColor(1f, 1f, 1f, 0.15f);  // highlight stripe
         shapeRenderer.rect(x, y + panelH - 4, panelW, 4);
         shapeRenderer.end();
+
+        // Disable blending after drawing the panel
+        Gdx.gl.glDisable(GL20.GL_BLEND);
 
         batch.begin();
         batch.draw(coinTexture, x + padding, y + (panelH - iconSize) / 2 - 1, iconSize, iconSize);
         font.getData().setScale(2.0f);
         font.setColor(0, 0, 0, 0.7f);
-        font.draw(batch, text, x + padding + iconSize + 12 + 2, y + panelH - 16 - 2);
+        font.draw(batch, text, x + padding + iconSize + 14, y + panelH - 16 - 2);
         font.setColor(Color.WHITE);
         font.draw(batch, text, x + padding + iconSize + 12, y + panelH - 16);
         font.getData().setScale(1.0f);
         batch.end();
     }
+
 
     private void drawNPCs() {
         List<Island.NPC> npcs = Island.NPCS;
@@ -575,21 +710,33 @@ public class Core extends ApplicationAdapter {
     }
 
     private void drawShopWindow() {
-        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
-            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
-        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
-            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
+            0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
+            0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
 
         int w = 420, h = 200;
         int x = (Gdx.graphics.getWidth() - w) / 2;
         int y = (Gdx.graphics.getHeight() - h) / 2;
 
+        // --- Enable blending so transparency works ---
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0f, 0f, 0f, 0.5f);
+
+        // Transparent dark overlay (background fade)
+        shapeRenderer.setColor(0f, 0f, 0f, 0.30f); // 30% opaque
         shapeRenderer.rect(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        shapeRenderer.setColor(0.08f, 0.08f, 0.1f, 0.95f);
+
+        // Shop panel (slightly transparent)
+        shapeRenderer.setColor(0.10f, 0.10f, 0.15f, 0.90f);
         shapeRenderer.rect(x, y, w, h);
+
         shapeRenderer.end();
+
+        // Turn blending off (optional)
+        Gdx.gl.glDisable(GL20.GL_BLEND);
 
         batch.begin();
         font.getData().setScale(1.2f);
@@ -612,9 +759,11 @@ public class Core extends ApplicationAdapter {
             font.setColor(Color.GRAY);
             font.draw(batch, "TAB to switch to Sell, ESC to close", x + 14, y + 20);
         }
+
         font.setColor(Color.WHITE);
         batch.end();
     }
+
 
     private int sellAllOf(String type) {
         int total = 0;
@@ -657,5 +806,6 @@ public class Core extends ApplicationAdapter {
         if (carrotSeedTexture != null) carrotSeedTexture.dispose();
         if (potatoSeedTexture != null) potatoSeedTexture.dispose();
         if (blueberrySeedTexture != null) blueberrySeedTexture.dispose();
+        if (ui != null) ui.dispose();
     }
 }
