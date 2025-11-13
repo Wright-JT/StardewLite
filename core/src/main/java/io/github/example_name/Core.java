@@ -359,8 +359,14 @@ public class Core extends ApplicationAdapter {
         if (respawnClicked) {
             respawnPlayer();
         }
+        // ✅ Check if the UI requested the game to close (options menu)
+        if (ui.pollCloseRequested()) {
+            Gdx.app.exit();
+        }
 
     }
+
+
 
     private void handleTileToggle(int x, int y) {
         if (!inBounds(x, y) || ISLAND_MAP[y][x] != 1) return;
@@ -614,7 +620,7 @@ public class Core extends ApplicationAdapter {
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0f, 0f, 0f, 0.40f);   // 40% opaque
+        shapeRenderer.setColor(0f, 0f, 0f, 0.25f);   // 40% opaque
         shapeRenderer.rect(x, y, panelW, panelH);
         shapeRenderer.setColor(1f, 1f, 1f, 0.15f);  // highlight stripe
         shapeRenderer.rect(x, y + panelH - 4, panelW, 4);
@@ -704,21 +710,33 @@ public class Core extends ApplicationAdapter {
     }
 
     private void drawShopWindow() {
-        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
-            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
-        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(0, 0,
-            Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
+            0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
+        batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
+            0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
 
         int w = 420, h = 200;
         int x = (Gdx.graphics.getWidth() - w) / 2;
         int y = (Gdx.graphics.getHeight() - h) / 2;
 
+        // --- Enable blending so transparency works ---
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0f, 0f, 0f, 0.5f);
+
+        // Transparent dark overlay (background fade)
+        shapeRenderer.setColor(0f, 0f, 0f, 0.30f); // 30% opaque
         shapeRenderer.rect(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        shapeRenderer.setColor(0.08f, 0.08f, 0.1f, 0.95f);
+
+        // Shop panel (slightly transparent)
+        shapeRenderer.setColor(0.10f, 0.10f, 0.15f, 0.90f);
         shapeRenderer.rect(x, y, w, h);
+
         shapeRenderer.end();
+
+        // Turn blending off (optional)
+        Gdx.gl.glDisable(GL20.GL_BLEND);
 
         batch.begin();
         font.getData().setScale(1.2f);
@@ -741,9 +759,11 @@ public class Core extends ApplicationAdapter {
             font.setColor(Color.GRAY);
             font.draw(batch, "TAB to switch to Sell, ESC to close", x + 14, y + 20);
         }
+
         font.setColor(Color.WHITE);
         batch.end();
     }
+
 
     private int sellAllOf(String type) {
         int total = 0;
@@ -786,5 +806,6 @@ public class Core extends ApplicationAdapter {
         if (carrotSeedTexture != null) carrotSeedTexture.dispose();
         if (potatoSeedTexture != null) potatoSeedTexture.dispose();
         if (blueberrySeedTexture != null) blueberrySeedTexture.dispose();
+        if (ui != null) ui.dispose();
     }
 }
