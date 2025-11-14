@@ -28,7 +28,7 @@ public class Chat {
 
     public Chat() {
         // Optional: start with a system message
-        addMessage("System: Press ENTER to toggle chat.");
+        addMessage("System: Arrow keys to move, right click to till land/harvest.\nLeft click to un-till/harvest.");
     }
 
     /** Called each frame from Core.render() to handle keyboard input. */

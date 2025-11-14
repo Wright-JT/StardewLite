@@ -96,6 +96,7 @@ public class Core extends ApplicationAdapter {
         float getSize() { return 0.1f + 0.8f * getGrowthPercent(); }
     }
 
+
     @Override
     public void create() {
         camera = new OrthographicCamera(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
@@ -200,10 +201,10 @@ public class Core extends ApplicationAdapter {
 
         // Only move when chat is not active AND player is alive
         if (!chat.isActive() && health > 0f) {
-            if (Gdx.input.isKeyPressed(Input.Keys.LEFT))  nextX -= PLAYER_SPEED * delta;
+            if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) nextX -= PLAYER_SPEED * delta;
             if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) nextX += PLAYER_SPEED * delta;
-            if (Gdx.input.isKeyPressed(Input.Keys.UP))    nextY += PLAYER_SPEED * delta;
-            if (Gdx.input.isKeyPressed(Input.Keys.DOWN))  nextY -= PLAYER_SPEED * delta;
+            if (Gdx.input.isKeyPressed(Input.Keys.UP)) nextY += PLAYER_SPEED * delta;
+            if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) nextY -= PLAYER_SPEED * delta;
         }
 
         // ✅ collision + apply
@@ -224,8 +225,8 @@ public class Core extends ApplicationAdapter {
             int my = (int) (mouse.y / TILE_SIZE);
 
             if (inBounds(mx, my)) {
-                float distX = Math.abs((int)(playerX / TILE_SIZE) - mx);
-                float distY = Math.abs((int)(playerY / TILE_SIZE) - my);
+                float distX = Math.abs((int) (playerX / TILE_SIZE) - mx);
+                float distY = Math.abs((int) (playerY / TILE_SIZE) - my);
                 if (distX <= 2 && distY <= 2) {
                     if (Gdx.input.isButtonPressed(Input.Buttons.LEFT))
                         handleLeftClick(mx, my);
@@ -248,8 +249,13 @@ public class Core extends ApplicationAdapter {
                     inventoryItems[selectedSlot] = null;
                 }
 
-                // refill hunger completely
-                hunger = maxHunger;
+                float amount = 0f;
+                if (item.equals("CARROT"))    amount = 15f;
+                else if (item.equals("POTATO"))   amount = 25f;
+                else if (item.equals("BLUEBERRY")) amount = 40f;
+
+                hunger = Math.min(maxHunger, hunger + amount);
+
             }
         }
 
@@ -352,18 +358,19 @@ public class Core extends ApplicationAdapter {
         if (shopOpen) drawShopWindow();
         chat.draw(shapeRenderer, batch, font);
 
-// ✅ Draw health/hunger + death overlay, and check for respawn click
+
+/// ✅ Draw health/hunger + death overlay, and check for respawn click
         boolean respawnClicked = ui.draw(shapeRenderer, batch, font,
             health, maxHealth, hunger, maxHunger);
 
         if (respawnClicked) {
             respawnPlayer();
         }
-        // ✅ Check if the UI requested the game to close (options menu)
+
+// ✅ Options: Close Game
         if (ui.pollCloseRequested()) {
             Gdx.app.exit();
         }
-
     }
 
 
