@@ -31,23 +31,17 @@ public class Client {
         this.listener = listener;
     }
 
-    /**
-     * Connect using a timeout so the game doesn't freeze.
-     */
     public boolean connect() {
-        System.out.println("Client: attempting connect to " + host + ":" + port);
         try {
             socket = new Socket();
-            socket.connect(new InetSocketAddress(host, port), 3000); // 3s timeout
-            System.out.println("Client: socket connected");
+            socket.connect(new InetSocketAddress(host, port), 3000);
 
             out = new PrintWriter(socket.getOutputStream(), true);
             in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-            // NOTE: We do NOT send a standalone username line here.
-            // All chat will be sent as "username: message" via sendChatMessage().
-
+            out.println(username);
             connected = true;
+
             startListening();
 
             System.out.println("Client connected to " + host + ":" + port);
@@ -60,16 +54,12 @@ public class Client {
         }
     }
 
-    /**
-     * Listens for messages from the server in a background thread.
-     */
     private void startListening() {
         listenThread = new Thread(() -> {
             try {
                 String line;
                 while (connected && (line = in.readLine()) != null) {
                     if (listener != null) {
-                        // The game (Core) will update the chat on the render thread via this callback.
                         listener.onMessage(line);
                     }
                 }
@@ -86,14 +76,11 @@ public class Client {
         listenThread.start();
     }
 
-    /** Sends a chat message including username prefix. */
     public void sendChatMessage(String text) {
         if (!connected || out == null || text == null || text.isEmpty()) return;
-        // Only send to server; do NOT also inject locally here.
-        out.println(username + ": " + text);
+        sendRaw(username + ": " + text);
     }
 
-    /** Sends a raw line to the server. */
     public void sendRaw(String line) {
         if (!connected || out == null || line == null) return;
         out.println(line);
@@ -107,15 +94,10 @@ public class Client {
     private void close() {
         connected = false;
 
-        try {
-            if (in != null) in.close();
-        } catch (IOException ignored) {}
-
+        try { if (in != null) in.close(); } catch (IOException ignored) {}
         if (out != null) out.close();
 
-        try {
-            if (socket != null && !socket.isClosed()) socket.close();
-        } catch (IOException ignored) {}
+        try { if (socket != null && !socket.isClosed()) socket.close(); } catch (IOException ignored) {}
 
         in = null;
         out = null;
