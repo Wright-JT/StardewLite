@@ -31,23 +31,18 @@ public class Client {
         this.listener = listener;
     }
 
-    /**
-     * Connect using a timeout so game doesn't freeze.
-     */
     public boolean connect() {
+        System.out.println("Client: attempting connect to " + host + ":" + port);
         try {
             socket = new Socket();
-            socket.connect(new InetSocketAddress(host, port), 3000); // 3-second timeout
+            socket.connect(new InetSocketAddress(host, port), 3000); // 3s timeout
+            System.out.println("Client: socket connected");
 
             out = new PrintWriter(socket.getOutputStream(), true);
             in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-            // Send username to server
             out.println(username);
-
             connected = true;
-
-            // Start message listening thread
             startListening();
 
             System.out.println("Client connected to " + host + ":" + port);
@@ -60,9 +55,6 @@ public class Client {
         }
     }
 
-    /**
-     * Listens for messages from the server in a background thread.
-     */
     private void startListening() {
         listenThread = new Thread(() -> {
             try {
@@ -85,13 +77,11 @@ public class Client {
         listenThread.start();
     }
 
-    /** Sends a chat message including username prefix. */
     public void sendChatMessage(String text) {
         if (!connected || out == null || text == null || text.isEmpty()) return;
         sendRaw(username + ": " + text);
     }
 
-    /** Sends a raw line to the server. */
     public void sendRaw(String line) {
         if (!connected || out == null || line == null) return;
         out.println(line);

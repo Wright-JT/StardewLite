@@ -205,9 +205,10 @@ public class Core extends ApplicationAdapter {
 
     public void receiveNetworkMessage(String message) {
         if (chat != null) {
-            chat.addMessage(message);
+            chat.addMessage(message);   // just display it
         }
     }
+
 
 
     @Override

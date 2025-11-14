@@ -14,7 +14,6 @@ import javax.swing.JOptionPane;
 
 public class MainMenu extends ApplicationAdapter {
 
-    // Menu rendering
     private SpriteBatch batch;
     private ShapeRenderer shapeRenderer;
     private BitmapFont font;
@@ -23,21 +22,17 @@ public class MainMenu extends ApplicationAdapter {
     private Host host;
     private Client client;
 
-    private String joinUsername;
-    private String joinIp;
-
-    // Game instance (your existing game)
     private Core core;
     private boolean inGame = false;
     private boolean coreCreated = false;
 
-    // Button data
     private static class Button {
         float x, y, w, h;
         String label;
     }
+
     private Texture titleTexture;
-    private float titleScale = 0.65f;   // 70% size
+    private float titleScale = 0.65f;
 
     private Button hostButton;
     private Button joinButton;
@@ -49,11 +44,10 @@ public class MainMenu extends ApplicationAdapter {
         shapeRenderer = new ShapeRenderer();
         font = new BitmapFont();
         menuBackground = new Texture(Gdx.files.internal("menu.png"));
-        titleTexture = new Texture(Gdx.files.internal("menutitle.png")); // <-- NEW
+        titleTexture = new Texture(Gdx.files.internal("menutitle.png"));
 
         createButtons();
     }
-
 
     private void createButtons() {
         int screenW = Gdx.graphics.getWidth();
@@ -64,8 +58,6 @@ public class MainMenu extends ApplicationAdapter {
         float spacing = 18f;
 
         float centerX = (screenW - buttonWidth) / 2f;
-
-        // Move buttons DOWN by +120px
         float baseY = screenH / 2f - 120f;
 
         hostButton = new Button();
@@ -90,13 +82,10 @@ public class MainMenu extends ApplicationAdapter {
         exitButton.label = "Exit";
     }
 
-
     @Override
     public void render() {
-        // If game is running, just delegate to Core
         if (inGame) {
             if (!coreCreated) {
-                // Safety: make sure Core is properly initialized
                 core = new Core();
                 core.create();
                 coreCreated = true;
@@ -112,25 +101,20 @@ public class MainMenu extends ApplicationAdapter {
         int screenW = Gdx.graphics.getWidth();
         int screenH = Gdx.graphics.getHeight();
 
-        // Simple clear
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(Gdx.gl.GL_COLOR_BUFFER_BIT);
 
-        // Screen-space projection
         Matrix4 uiMatrix = new Matrix4().setToOrtho2D(0, 0, screenW, screenH);
         batch.setProjectionMatrix(uiMatrix);
         shapeRenderer.setProjectionMatrix(uiMatrix);
 
-        // Draw background (stretched to window)
         batch.begin();
         batch.draw(menuBackground, 0, 0, screenW, screenH);
         batch.end();
 
-        // Draw title centered above buttons
         batch.begin();
         if (titleTexture != null) {
-
-            float scale = titleScale; // easy to tweak
+            float scale = titleScale;
             float titleW = titleTexture.getWidth() * scale;
             float titleH = titleTexture.getHeight() * scale;
 
@@ -141,7 +125,6 @@ public class MainMenu extends ApplicationAdapter {
         }
         batch.end();
 
-        // Draw semi-transparent button panels
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         Gdx.gl.glEnable(Gdx.gl.GL_BLEND);
         Gdx.gl.glBlendFunc(Gdx.gl.GL_SRC_ALPHA, Gdx.gl.GL_ONE_MINUS_SRC_ALPHA);
@@ -153,7 +136,6 @@ public class MainMenu extends ApplicationAdapter {
         shapeRenderer.end();
         Gdx.gl.glDisable(Gdx.gl.GL_BLEND);
 
-        // Draw button labels
         batch.begin();
         font.setColor(Color.WHITE);
         font.getData().setScale(1.4f);
@@ -169,11 +151,9 @@ public class MainMenu extends ApplicationAdapter {
     }
 
     private void drawButtonPanel(Button b) {
-        // Outer darker panel
         shapeRenderer.setColor(0f, 0f, 0f, 0.6f);
         shapeRenderer.rect(b.x, b.y, b.w, b.h);
 
-        // Subtle highlight stripe at top
         shapeRenderer.setColor(1f, 1f, 1f, 0.15f);
         shapeRenderer.rect(b.x, b.y + b.h - 4, b.w, 4);
     }
@@ -186,54 +166,43 @@ public class MainMenu extends ApplicationAdapter {
     }
 
     private void handleMenuInput() {
-        // React on any fresh click/tap
         if (!Gdx.input.justTouched()) return;
 
         int screenH = Gdx.graphics.getHeight();
         int mx = Gdx.input.getX();
-        int my = screenH - Gdx.input.getY(); // invert Y (top-left -> bottom-left)
+        int my = screenH - Gdx.input.getY();
 
         if (isInside(mx, my, hostButton)) {
-            // HOST: ask for username via dialog
             String username = JOptionPane.showInputDialog(
                 null,
                 "Enter Username:",
                 "Host Game",
                 JOptionPane.QUESTION_MESSAGE
             );
-            if (username == null || username.trim().isEmpty()) {
-                return; // cancelled or invalid
-            }
+            if (username == null || username.trim().isEmpty()) return;
             username = username.trim();
 
-            // Create game instance if not already made
             if (!coreCreated) {
                 core = new Core();
                 core.create();
                 coreCreated = true;
             }
 
-            // Start the chat server (host) once
             if (host == null) {
                 host = new Host(
                     5000,
                     message -> Gdx.app.postRunnable(() -> {
-                        if (core != null) {
-                            core.receiveNetworkMessage(message);
-                        }
+                        if (core != null) core.receiveNetworkMessage(message);
                     })
                 );
                 host.start();
             }
 
-            // Tell Core this player is the host
-            core.setLocalUsername(username);  // make sure Core has this setter
-            core.setNetwork(host, null);      // no client for host
-
+            core.setLocalUsername(username);
+            core.setNetwork(host, null);
             inGame = true;
 
         } else if (isInside(mx, my, joinButton)) {
-            // JOIN: ask for username and IP using JOptionPane dialogs
 
             String username = JOptionPane.showInputDialog(
                 null,
@@ -241,9 +210,7 @@ public class MainMenu extends ApplicationAdapter {
                 "Join Game",
                 JOptionPane.QUESTION_MESSAGE
             );
-            if (username == null || username.trim().isEmpty()) {
-                return; // cancelled or empty
-            }
+            if (username == null || username.trim().isEmpty()) return;
             username = username.trim();
 
             String ip = JOptionPane.showInputDialog(
@@ -252,31 +219,24 @@ public class MainMenu extends ApplicationAdapter {
                 "Join Game",
                 JOptionPane.QUESTION_MESSAGE
             );
-            if (ip == null || ip.trim().isEmpty()) {
-                return; // cancelled or empty
-            }
+            if (ip == null || ip.trim().isEmpty()) return;
             ip = ip.trim();
 
-            // Create Core if needed
             if (!coreCreated) {
                 core = new Core();
                 core.create();
                 coreCreated = true;
             }
 
-            // Create client
             client = new Client(
                 ip,
                 5000,
                 username,
                 message -> Gdx.app.postRunnable(() -> {
-                    if (core != null) {
-                        core.receiveNetworkMessage(message);
-                    }
+                    if (core != null) core.receiveNetworkMessage(message);
                 })
             );
 
-            // Try to connect; only enter game if it succeeds
             boolean connected = client.connect();
             if (!connected) {
                 JOptionPane.showMessageDialog(
@@ -289,19 +249,14 @@ public class MainMenu extends ApplicationAdapter {
                 return;
             }
 
-            // Success: wire into Core and enter the game
-            core.setLocalUsername(username);   // so chat prefix matches
+            core.setLocalUsername(username);
             core.setNetwork(null, client);
             inGame = true;
 
         } else if (isInside(mx, my, exitButton)) {
-            // EXIT button
             Gdx.app.exit();
         }
     }
-
-
-
 
     private boolean isInside(int mx, int my, Button b) {
         return mx >= b.x && mx <= b.x + b.w &&
@@ -311,7 +266,7 @@ public class MainMenu extends ApplicationAdapter {
     @Override
     public void resize(int width, int height) {
         if (!inGame) {
-            createButtons(); // recompute button positions for new size
+            createButtons();
         } else if (coreCreated) {
             core.resize(width, height);
         }

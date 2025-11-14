@@ -188,14 +188,16 @@ public class Host {
 
                 String line;
                 while (connected && (line = in.readLine()) != null) {
+                    // `line` already contains "username: text" from the client
                     String msg = "[Client " + socket.getInetAddress().getHostAddress() + "]: " + line;
 
-                    // Broadcast to all clients
+                    // Broadcast to all *other* clients (not back to the sender)
                     synchronized (clients) {
                         List<ClientHandler> snapshot = new ArrayList<>(clients);
                         for (ClientHandler ch : snapshot) {
-                            // Each client sees the chat line (including sender)
-                            ch.send(msg);
+                            if (ch != this) {      // <- key change: do not echo to sender
+                                ch.send(msg);
+                            }
                         }
                     }
 
