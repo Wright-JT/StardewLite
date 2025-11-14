@@ -4,21 +4,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 
-/**
- * Simple TCP chat client.
- *
- * Usage:
- *
- * Client client = new Client(
- *         hostIp,
- *         5000,
- *         username,
- *         message -> chat.addMessage(message)
- * );
- * client.connect();
- */
 public class Client {
 
     public interface MessageListener {
@@ -44,39 +32,23 @@ public class Client {
     }
 
     /**
-     * Connects to the server and starts listening for messages.
+     * Connect using a timeout so game doesn't freeze.
      */
     public boolean connect() {
         try {
-            socket = new Socket(host, port);
+            socket = new Socket();
+            socket.connect(new InetSocketAddress(host, port), 3000); // 3-second timeout
+
             out = new PrintWriter(socket.getOutputStream(), true);
             in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-            connected = true;
 
             // Send username to server
             out.println(username);
 
-            // Start async listening thread
-            listenThread = new Thread(() -> {
-                try {
-                    String line;
-                    while (connected && (line = in.readLine()) != null) {
-                        if (listener != null) {
-                            listener.onMessage(line); // notify Core/Chat
-                        }
-                    }
-                } catch (IOException e) {
-                    if (connected) {
-                        System.out.println("Client read error: " + e.getMessage());
-                    }
-                } finally {
-                    close();
-                }
-            }, "Client-Listen-Thread");
+            connected = true;
 
-            listenThread.setDaemon(true);
-            listenThread.start();
+            // Start message listening thread
+            startListening();
 
             System.out.println("Client connected to " + host + ":" + port);
             return true;
@@ -89,24 +61,43 @@ public class Client {
     }
 
     /**
-     * Sends a chat message with username prefix.
+     * Listens for messages from the server in a background thread.
      */
+    private void startListening() {
+        listenThread = new Thread(() -> {
+            try {
+                String line;
+                while (connected && (line = in.readLine()) != null) {
+                    if (listener != null) {
+                        listener.onMessage(line);
+                    }
+                }
+            } catch (IOException e) {
+                if (connected) {
+                    System.err.println("Client listen error: " + e.getMessage());
+                }
+            } finally {
+                close();
+            }
+        }, "Client-Listen-Thread");
+
+        listenThread.setDaemon(true);
+        listenThread.start();
+    }
+
+    /** Sends a chat message including username prefix. */
     public void sendChatMessage(String text) {
         if (!connected || out == null || text == null || text.isEmpty()) return;
-        out.println(username + ": " + text);
+        sendRaw(username + ": " + text);
     }
 
-    /**
-     * Sends a raw line (no username).
-     */
+    /** Sends a raw line to the server. */
     public void sendRaw(String line) {
-        if (!connected || out == null) return;
+        if (!connected || out == null || line == null) return;
         out.println(line);
+        out.flush();
     }
 
-    /**
-     * Disconnects from server.
-     */
     public void disconnect() {
         close();
     }
@@ -114,17 +105,10 @@ public class Client {
     private void close() {
         connected = false;
 
-        try {
-            if (in != null) in.close();
-        } catch (IOException ignored) {}
+        try { if (in != null) in.close(); } catch (IOException ignored) {}
+        if (out != null) out.close();
 
-        try {
-            if (out != null) out.close();
-        } catch (Exception ignored) {}
-
-        try {
-            if (socket != null && !socket.isClosed()) socket.close();
-        } catch (IOException ignored) {}
+        try { if (socket != null && !socket.isClosed()) socket.close(); } catch (IOException ignored) {}
 
         in = null;
         out = null;
