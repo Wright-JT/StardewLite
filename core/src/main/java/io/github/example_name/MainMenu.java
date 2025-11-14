@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Matrix4;
+import javax.swing.JOptionPane;
 
 public class MainMenu extends ApplicationAdapter {
 
@@ -18,6 +19,12 @@ public class MainMenu extends ApplicationAdapter {
     private ShapeRenderer shapeRenderer;
     private BitmapFont font;
     private Texture menuBackground;
+
+    private Host host;
+    private Client client;
+
+    private String joinUsername;
+    private String joinIp;
 
     // Game instance (your existing game)
     private Core core;
@@ -179,27 +186,102 @@ public class MainMenu extends ApplicationAdapter {
     }
 
     private void handleMenuInput() {
-        if (!Gdx.input.justTouched()) return;
+        // Only react to a LEFT mouse click
+        if (!Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) return;
 
         int screenH = Gdx.graphics.getHeight();
         int mx = Gdx.input.getX();
-        int my = screenH - Gdx.input.getY(); // invert Y
+        int my = screenH - Gdx.input.getY(); // invert Y (top-left -> bottom-left)
 
         if (isInside(mx, my, hostButton)) {
-            // Start the actual game
+            // HOST: start game + start server
             if (!coreCreated) {
                 core = new Core();
                 core.create();
                 coreCreated = true;
             }
+
+            // Start the chat server (only once)
+            if (host == null) {
+                host = new Host(
+                    5000,
+                    message -> Gdx.app.postRunnable(() -> {
+                        if (core != null) {
+                            core.receiveNetworkMessage(message);
+                        }
+                    })
+                );
+                host.start();
+            }
+
+            // Local player uses the host as the network backend
+            core.setNetwork(host, null);
             inGame = true;
+
         } else if (isInside(mx, my, joinButton)) {
-            // TODO: Implement join logic later
-            // For now, do nothing
-        } else if (isInside(mx, my, exitButton)) {
-            Gdx.app.exit();
+            // JOIN: ask for username and IP using JOptionPane dialogs
+
+            String username = JOptionPane.showInputDialog(
+                null,
+                "Enter Username:",
+                "Join Game",
+                JOptionPane.QUESTION_MESSAGE
+            );
+            if (username == null || username.trim().isEmpty()) {
+                return; // cancelled or empty
+            }
+            username = username.trim();
+
+            String ip = JOptionPane.showInputDialog(
+                null,
+                "Enter Host IP:",
+                "Join Game",
+                JOptionPane.QUESTION_MESSAGE
+            );
+            if (ip == null || ip.trim().isEmpty()) {
+                return; // cancelled or empty
+            }
+            ip = ip.trim();
+
+            // Create Core if needed
+            if (!coreCreated) {
+                core = new Core();
+                core.create();
+                coreCreated = true;
+            }
+
+            // Create client
+            client = new Client(
+                ip,
+                5000,
+                username,
+                message -> Gdx.app.postRunnable(() -> {
+                    if (core != null) {
+                        core.receiveNetworkMessage(message);
+                    }
+                })
+            );
+
+            // 🔑 Try to connect; only enter game if it succeeds
+            boolean connected = client.connect();
+            if (!connected) {
+                JOptionPane.showMessageDialog(
+                    null,
+                    "Failed to join: could not connect to host.",
+                    "Join Failed",
+                    JOptionPane.ERROR_MESSAGE
+                );
+                client = null;
+                return;
+            }
+
+            // Success: wire into Core and enter the game
+            core.setNetwork(null, client);
+            inGame = true;
         }
     }
+
+
 
     private boolean isInside(int mx, int my, Button b) {
         return mx >= b.x && mx <= b.x + b.w &&

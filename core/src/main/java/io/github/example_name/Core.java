@@ -73,6 +73,9 @@ public class Core extends ApplicationAdapter {
     private boolean shopOpen = false;
     private boolean shopSellTab = true;
 
+    private Host host;
+    private Client client;
+
     enum TileState { EMPTY, TILLED }
     enum CropType { WHEAT, CARROT, POTATO, BLUEBERRY }
 
@@ -181,6 +184,27 @@ public class Core extends ApplicationAdapter {
             }
         });
     }
+
+    public Chat getChat() {
+        return chat;
+    }
+
+    public void setNetwork(Host host, Client client) {
+        this.host = host;
+        this.client = client;
+
+        // Let chat know about the client so it can send messages out
+        if (chat != null && client != null) {
+            chat.setClient(client);
+        }
+    }
+
+    public void receiveNetworkMessage(String message) {
+        if (chat != null) {
+            chat.addMessage(message);
+        }
+    }
+
 
     @Override
     public void render() {

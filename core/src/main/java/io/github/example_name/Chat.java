@@ -20,6 +20,7 @@ public class Chat {
     private boolean active = false;
     private static final int MAX_CHAT_LINES = 50;
 
+    private Client client;
     // Layout
     private final int width = 420;
     private final int height = 180;
@@ -30,7 +31,9 @@ public class Chat {
         // Optional: start with a system message
         addMessage("System: Arrow keys to move, right click to till land/harvest.\nLeft click to un-till/harvest.");
     }
-
+    public void setClient(Client client) {
+        this.client = client;
+    }
     /** Called each frame from Core.render() to handle keyboard input. */
     public void update() {
         // Toggle chat focus / send message on ENTER
@@ -40,6 +43,11 @@ public class Chat {
                 String msg = input.toString().trim();
                 if (!msg.isEmpty()) {
                     addMessage("You: " + msg);
+
+                    // 🔁 Also send to server if connected
+                    if (client != null) {
+                        client.sendChatMessage(msg);
+                    }
                 }
                 input.setLength(0);
                 active = false;
