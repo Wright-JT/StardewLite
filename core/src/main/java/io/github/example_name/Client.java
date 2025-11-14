@@ -32,16 +32,17 @@ public class Client {
     }
 
     public boolean connect() {
+        System.out.println("Client: attempting connect to " + host + ":" + port);
         try {
             socket = new Socket();
-            socket.connect(new InetSocketAddress(host, port), 3000);
+            socket.connect(new InetSocketAddress(host, port), 3000); // 3s timeout
+            System.out.println("Client: socket connected");
 
             out = new PrintWriter(socket.getOutputStream(), true);
             in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
             out.println(username);
             connected = true;
-
             startListening();
 
             System.out.println("Client connected to " + host + ":" + port);

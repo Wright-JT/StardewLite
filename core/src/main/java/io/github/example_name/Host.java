@@ -73,12 +73,14 @@ public class Host {
     public synchronized void stop() {
         running = false;
 
+        // Close the server socket to break out of accept()
         if (serverSocket != null && !serverSocket.isClosed()) {
             try {
                 serverSocket.close();
             } catch (IOException ignored) {}
         }
 
+        // Close all clients
         synchronized (clients) {
             for (ClientHandler ch : clients) {
                 ch.close();
@@ -87,22 +89,35 @@ public class Host {
         }
     }
 
+    /**
+     * Returns whether the server is currently running.
+     */
     public boolean isRunning() {
         return running;
     }
 
+    /**
+     * Broadcasts a message to all connected clients.
+     * You can also call this from your game to send "System" messages.
+     */
     public void broadcast(String message) {
         synchronized (clients) {
+            // Use a copy to avoid ConcurrentModificationException
             List<ClientHandler> snapshot = new ArrayList<>(clients);
             for (ClientHandler ch : snapshot) {
                 ch.send(message);
             }
         }
 
+        // Also notify local listener (e.g., to show in host's chat box)
         if (listener != null) {
             listener.onMessageReceived(message);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // INTERNAL SERVER LOOP
+    // -------------------------------------------------------------------------
 
     private void runServer() {
         try (ServerSocket server = new ServerSocket(port)) {
@@ -141,6 +156,10 @@ public class Host {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // CLIENT HANDLER
+    // -------------------------------------------------------------------------
+
     private class ClientHandler implements Runnable {
         private final Socket socket;
         private BufferedReader in;
@@ -164,19 +183,25 @@ public class Host {
             if (!connected) return;
 
             try {
+                // Optional: send a welcome message
                 send("System: Welcome to the chat!");
 
                 String line;
                 while (connected && (line = in.readLine()) != null) {
+                    // `line` already contains "username: text" from the client
                     String msg = "[Client " + socket.getInetAddress().getHostAddress() + "]: " + line;
 
+                    // Broadcast to all *other* clients (not back to the sender)
                     synchronized (clients) {
                         List<ClientHandler> snapshot = new ArrayList<>(clients);
                         for (ClientHandler ch : snapshot) {
-                            ch.send(msg);
+                            if (ch != this) {      // <- key change: do not echo to sender
+                                ch.send(msg);
+                            }
                         }
                     }
 
+                    // Also tell the host / game
                     if (listener != null) {
                         listener.onMessageReceived(msg);
                     }
