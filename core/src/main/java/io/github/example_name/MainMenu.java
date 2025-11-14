@@ -186,22 +186,34 @@ public class MainMenu extends ApplicationAdapter {
     }
 
     private void handleMenuInput() {
-        // Only react to a LEFT mouse click
-        if (!Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) return;
+        // React on any fresh click/tap
+        if (!Gdx.input.justTouched()) return;
 
         int screenH = Gdx.graphics.getHeight();
         int mx = Gdx.input.getX();
         int my = screenH - Gdx.input.getY(); // invert Y (top-left -> bottom-left)
 
         if (isInside(mx, my, hostButton)) {
-            // HOST: start game + start server
+            // HOST: ask for username via dialog
+            String username = JOptionPane.showInputDialog(
+                null,
+                "Enter Username:",
+                "Host Game",
+                JOptionPane.QUESTION_MESSAGE
+            );
+            if (username == null || username.trim().isEmpty()) {
+                return; // cancelled or invalid
+            }
+            username = username.trim();
+
+            // Create game instance if not already made
             if (!coreCreated) {
                 core = new Core();
                 core.create();
                 coreCreated = true;
             }
 
-            // Start the chat server (only once)
+            // Start the chat server (host) once
             if (host == null) {
                 host = new Host(
                     5000,
@@ -214,8 +226,10 @@ public class MainMenu extends ApplicationAdapter {
                 host.start();
             }
 
-            // Local player uses the host as the network backend
-            core.setNetwork(host, null);
+            // Tell Core this player is the host
+            core.setLocalUsername(username);  // make sure Core has this setter
+            core.setNetwork(host, null);      // no client for host
+
             inGame = true;
 
         } else if (isInside(mx, my, joinButton)) {
@@ -262,7 +276,7 @@ public class MainMenu extends ApplicationAdapter {
                 })
             );
 
-            // 🔑 Try to connect; only enter game if it succeeds
+            // Try to connect; only enter game if it succeeds
             boolean connected = client.connect();
             if (!connected) {
                 JOptionPane.showMessageDialog(
@@ -276,10 +290,16 @@ public class MainMenu extends ApplicationAdapter {
             }
 
             // Success: wire into Core and enter the game
+            core.setLocalUsername(username);   // so chat prefix matches
             core.setNetwork(null, client);
             inGame = true;
+
+        } else if (isInside(mx, my, exitButton)) {
+            // EXIT button
+            Gdx.app.exit();
         }
     }
+
 
 
 

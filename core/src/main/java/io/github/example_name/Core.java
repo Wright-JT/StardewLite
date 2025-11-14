@@ -98,8 +98,6 @@ public class Core extends ApplicationAdapter {
         float getGrowthPercent() { return Math.min(growTime / 20f, 1f); }
         float getSize() { return 0.1f + 0.8f * getGrowthPercent(); }
     }
-
-
     @Override
     public void create() {
         camera = new OrthographicCamera(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
@@ -187,6 +185,12 @@ public class Core extends ApplicationAdapter {
 
     public Chat getChat() {
         return chat;
+    }
+
+    public void setLocalUsername(String username) {
+        if (chat != null) {
+            chat.setLocalUsername(username);
+        }
     }
 
     public void setNetwork(Host host, Client client) {
