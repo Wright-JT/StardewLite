@@ -20,12 +20,12 @@ public class UI {
 
     // --- Options Button ---
     private Texture optionsTexture = new Texture(Gdx.files.internal("options.png"));
-    private final int optionsSize = 48;   // CHANGE SIZE HERE
+    private final int optionsSize = 48;   // icon size
     private boolean optionsOpen = false;
 
     // --- Options Window Buttons ---
     private final int windowWidth = 360;
-    private final int windowHeight = 220;
+    private final int windowHeight = 180;
     private final int buttonWidth = 220;
     private final int buttonHeight = 48;
     private final int buttonSpacing = 14;
@@ -34,7 +34,7 @@ public class UI {
 
     public UI() {}
 
-    // Called after UI.draw() from Core
+    // Called after UI.draw() from Core to see if exit was requested
     public boolean pollCloseRequested() {
         boolean temp = closeRequested;
         closeRequested = false;
@@ -142,7 +142,7 @@ public class UI {
     }
 
     // --------------------------------------------------------------------------
-    // OPTIONS WINDOW
+    // OPTIONS WINDOW (ONLY "Close Game" + "Cancel" NOW)
     // --------------------------------------------------------------------------
     private void drawOptionsWindow(ShapeRenderer shapeRenderer,
                                    SpriteBatch batch,
@@ -169,19 +169,19 @@ public class UI {
         batch.begin();
         font.setColor(Color.WHITE);
         font.getData().setScale(1.3f);
-        font.draw(batch, "Options", x + 20, y + windowHeight - 18);
+        font.draw(batch, "Options", x + 20, y + windowHeight - 10);
         font.getData().setScale(1f);
         batch.end();
 
-        // BUTTON POSITIONS
-        int closeY = y + windowHeight / 2 - 10;
-        int cancelY = closeY - buttonHeight - buttonSpacing;
+        // BUTTON POSITIONS (two buttons now)
         int btnX = x + (windowWidth - buttonWidth) / 2;
+        int closeY  = y + windowHeight - 80;                 // top button
+        int cancelY = closeY - buttonHeight - buttonSpacing; // second button
 
-        drawButton("Close Game", btnX, closeY, shapeRenderer, batch, font);
-        drawButton("Cancel", btnX, cancelY, shapeRenderer, batch, font);
+        drawButton("Close Game", btnX, closeY,  shapeRenderer, batch, font);
+        drawButton("Cancel",     btnX, cancelY, shapeRenderer, batch, font);
 
-        // Handle clicking the buttons
+        // Click handling
         if (Gdx.input.justTouched()) {
             int mx = Gdx.input.getX();
             int my = screenH - Gdx.input.getY();
@@ -218,8 +218,7 @@ public class UI {
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
         batch.begin();
-        GlyphLayout layout = new GlyphLayout();
-        layout.setText(font, text);
+        GlyphLayout layout = new GlyphLayout(font, text);
         float tx = x + (buttonWidth - layout.width) / 2;
         float ty = y + buttonHeight / 2 + layout.height / 2;
 

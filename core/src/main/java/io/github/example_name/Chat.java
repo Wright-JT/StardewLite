@@ -19,18 +19,32 @@ public class Chat {
 
     private boolean active = false;
     private static final int MAX_CHAT_LINES = 50;
-
+    private Client client;
     // Layout
     private final int width = 420;
     private final int height = 180;
     private final int x = 20;
     private final int y = 80;
+    private String localUsername = "Player";
+    private Host networkHost;
+    private Client networkClient;
+
+    public void setNetwork(Host host, Client client) {
+        this.networkHost = host;
+        this.networkClient = client;
+    }
 
     public Chat() {
         // Optional: start with a system message
-        addMessage("System: Press ENTER to toggle chat.");
+        addMessage("System: Arrow keys to move, right click to till land/harvest.\nLeft click to un-till/harvest.");
+    }
+    public void setClient(Client client) {
+        this.client = client;
     }
 
+    public void setLocalUsername(String name) {
+        this.localUsername = name;
+    }
     /** Called each frame from Core.render() to handle keyboard input. */
     public void update() {
         // Toggle chat focus / send message on ENTER
@@ -39,7 +53,16 @@ public class Chat {
                 // Sending a message
                 String msg = input.toString().trim();
                 if (!msg.isEmpty()) {
-                    addMessage("You: " + msg);
+                    if (networkClient != null) {
+                        networkClient.sendChatMessage(msg);
+                    } else if (networkHost != null) {
+                        networkHost.broadcast(localUsername + ": " + msg);
+                    }
+                    addMessage(localUsername + ": " + msg);
+
+                    if (client != null) {
+                        client.sendChatMessage(msg);
+                    }
                 }
                 input.setLength(0);
                 active = false;
