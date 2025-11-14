@@ -183,26 +183,13 @@ public class Host {
             if (!connected) return;
 
             try {
-                // Optional: send a welcome message
+                // Optional: send a welcome message only to this client
                 send("System: Welcome to the chat!");
 
                 String line;
                 while (connected && (line = in.readLine()) != null) {
-                    String msg = "[Client " + socket.getInetAddress().getHostAddress() + "]: " + line;
-
-                    // Broadcast to all clients
-                    synchronized (clients) {
-                        List<ClientHandler> snapshot = new ArrayList<>(clients);
-                        for (ClientHandler ch : snapshot) {
-                            // Each client sees the chat line (including sender)
-                            ch.send(msg);
-                        }
-                    }
-
-                    // Also tell the host / game
-                    if (listener != null) {
-                        listener.onMessageReceived(msg);
-                    }
+                    // Forward exactly what client sent to everyone (and to host listener)
+                    broadcast(line);
                 }
             } catch (IOException e) {
                 if (connected) {
