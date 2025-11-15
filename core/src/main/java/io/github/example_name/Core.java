@@ -28,7 +28,9 @@ public class Core extends ApplicationAdapter {
     private BitmapFont font;
     private Random random = new Random();
 
-    private Texture playerTexture, grassTexture, sandTexture;
+    // NEW
+    private Texture grassTexture, sandTexture;
+    private Walking walking;
     private Texture wheatTexture, carrotTexture, potatoTexture, blueberryTexture;
     private Texture grass1Texture, grass2Texture, grass3Texture;
     private Texture flower1Texture, flower2Texture, flower3Texture;
@@ -117,7 +119,6 @@ public class Core extends ApplicationAdapter {
         flower1Texture = new Texture(Gdx.files.internal("flower1.png"));
         flower2Texture = new Texture(Gdx.files.internal("flower2.png"));
         flower3Texture = new Texture(Gdx.files.internal("flower3.png"));
-        playerTexture = new Texture(Gdx.files.internal("farmer.png"));
         grassTexture = new Texture(Gdx.files.internal("grass.png"));
         sandTexture = new Texture(Gdx.files.internal("sand.png"));
         wheatTexture = new Texture(Gdx.files.internal("wheat.png"));
@@ -131,10 +132,12 @@ public class Core extends ApplicationAdapter {
         blueberrySeedTexture = new Texture(Gdx.files.internal("blueberryseed.png"));
 
         coinTexture = new Texture(Gdx.files.internal("8bitCoinPNG.png"));
-        farmerNpcTexture = new Texture(Gdx.files.internal("pngtree-farmer-pixel-art-character-icon-design-png-image_8744094.png"));
+        farmerNpcTexture = new Texture(Gdx.files.internal("farmer.png"));
 
         oceanMap = new TmxMapLoader().load("ocean.tmx");
         oceanRenderer = new OrthogonalTiledMapRenderer(oceanMap, TILE_SIZE / 8f);
+
+        walking = new Walking();
 
         float PLAYER_SCALE = 2.2f;
         playerWidth = TILE_SIZE * PLAYER_SCALE;
@@ -228,21 +231,45 @@ public class Core extends ApplicationAdapter {
         float PLAYER_SPEED = 150f;
         float nextX = playerX, nextY = playerY;
 
-        // Only move when chat is not active AND player is alive
+// Movement flags for animation
+        boolean movingLeft  = false;
+        boolean movingRight = false;
+        boolean movingUp    = false;
+        boolean movingDown  = false;
+
+// Only move when chat is not active AND player is alive
         if (!chat.isActive() && health > 0f) {
-            if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) nextX -= PLAYER_SPEED * delta;
-            if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) nextX += PLAYER_SPEED * delta;
-            if (Gdx.input.isKeyPressed(Input.Keys.UP)) nextY += PLAYER_SPEED * delta;
-            if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) nextY -= PLAYER_SPEED * delta;
+            if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
+                nextX -= PLAYER_SPEED * delta;
+                movingLeft = true;
+            }
+            if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
+                nextX += PLAYER_SPEED * delta;
+                movingRight = true;
+            }
+            if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
+                nextY += PLAYER_SPEED * delta;
+                movingUp = true;
+            }
+            if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
+                nextY -= PLAYER_SPEED * delta;
+                movingDown = true;
+            }
         }
 
-        // ✅ collision + apply
+// ✅ collision + apply (unchanged)
         int tx = (int) (nextX / TILE_SIZE);
         int ty = (int) (nextY / TILE_SIZE);
         if (inBounds(tx, ty) && ISLAND_MAP[ty][tx] != 0) {
             playerX = nextX;
             playerY = nextY;
         }
+
+// ✅ update walking animation AFTER we know movement input
+        if (walking != null) {
+            walking.update(delta, movingLeft, movingRight, movingUp, movingDown);
+        }
+
 
         oceanRenderer.setView(camera);
         oceanRenderer.render();
@@ -375,11 +402,15 @@ public class Core extends ApplicationAdapter {
         drawNPCs();
 
         batch.begin();
-        batch.draw(playerTexture,
+        batch.draw(
+            walking.getCurrentFrame(),
             playerX - (playerWidth - TILE_SIZE) / 2f,
             playerY - (playerHeight - TILE_SIZE) / 2f,
-            playerWidth, playerHeight);
+            playerWidth,
+            playerHeight
+        );
         batch.end();
+
 
         handleShopInteraction();
         drawInventory();
@@ -820,7 +851,7 @@ public class Core extends ApplicationAdapter {
         shapeRenderer.dispose();
         batch.dispose();
         font.dispose();
-        playerTexture.dispose();
+        if (walking != null) walking.dispose();
         grassTexture.dispose();
         sandTexture.dispose();
         wheatTexture.dispose();
