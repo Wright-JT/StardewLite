@@ -23,14 +23,16 @@ public class UI {
     private final int optionsSize = 48;   // icon size
     private boolean optionsOpen = false;
 
-    // --- Options Window Buttons ---
+    // --- Options Window Buttons / Layout ---
     private final int windowWidth = 360;
-    private final int windowHeight = 180;
+    private final int windowHeight = 240;   // ⬅ increased to make room for checkbox
     private final int buttonWidth = 220;
     private final int buttonHeight = 48;
     private final int buttonSpacing = 14;
 
+    // --- Options state flags ---
     private boolean closeRequested = false;
+    private boolean musicMuted = false;     // ⬅ new
 
     public UI() {}
 
@@ -39,6 +41,11 @@ public class UI {
         boolean temp = closeRequested;
         closeRequested = false;
         return temp;
+    }
+
+    // Optional: Core can query this every frame and forward to Sound
+    public boolean isMusicMuted() {
+        return musicMuted;
     }
 
     public void dispose() {
@@ -142,7 +149,7 @@ public class UI {
     }
 
     // --------------------------------------------------------------------------
-    // OPTIONS WINDOW (ONLY "Close Game" + "Cancel" NOW)
+    // OPTIONS WINDOW ("Mute music" checkbox + Close / Cancel)
     // --------------------------------------------------------------------------
     private void drawOptionsWindow(ShapeRenderer shapeRenderer,
                                    SpriteBatch batch,
@@ -152,30 +159,56 @@ public class UI {
         int x = (screenW - windowWidth) / 2;
         int y = (screenH - windowHeight) / 2;
 
+        // Checkbox layout
+        int checkboxSize = 22;
+        int checkboxX = x + 24;
+        int checkboxY = y + windowHeight - 80;   // a bit under the title
+
         // fade background
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+
+        // dark fade behind everything
         shapeRenderer.setColor(0f, 0f, 0f, 0.35f);
         shapeRenderer.rect(0, 0, screenW, screenH);
 
+        // window panel
         shapeRenderer.setColor(0.12f, 0.12f, 0.16f, 0.92f);
         shapeRenderer.rect(x, y, windowWidth, windowHeight);
-        shapeRenderer.end();
 
+        // checkbox box
+        shapeRenderer.setColor(0f, 0f, 0f, 0.8f);
+        shapeRenderer.rect(checkboxX, checkboxY, checkboxSize, checkboxSize);
+
+        // if checked, draw inner fill
+        if (musicMuted) {
+            shapeRenderer.setColor(0.2f, 0.8f, 0.2f, 1f);
+            shapeRenderer.rect(checkboxX + 4, checkboxY + 4,
+                checkboxSize - 8, checkboxSize - 8);
+        }
+
+        shapeRenderer.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
+        // Title + checkbox label
         batch.begin();
         font.setColor(Color.WHITE);
+
         font.getData().setScale(1.3f);
-        font.draw(batch, "Options", x + 20, y + windowHeight - 10);
+        font.draw(batch, "Options", x + 20, y + windowHeight - 18);
         font.getData().setScale(1f);
+
+        // Checkbox label
+        font.draw(batch, "Mute music",
+            checkboxX + checkboxSize + 8,
+            checkboxY + checkboxSize - 4);
         batch.end();
 
         // BUTTON POSITIONS (two buttons now)
         int btnX = x + (windowWidth - buttonWidth) / 2;
-        int closeY  = y + windowHeight - 80;                 // top button
+        int closeY  = y + 110;                          // top button
         int cancelY = closeY - buttonHeight - buttonSpacing; // second button
 
         drawButton("Close Game", btnX, closeY,  shapeRenderer, batch, font);
@@ -185,6 +218,13 @@ public class UI {
         if (Gdx.input.justTouched()) {
             int mx = Gdx.input.getX();
             int my = screenH - Gdx.input.getY();
+
+            // Checkbox toggle
+            if (mx >= checkboxX && mx <= checkboxX + checkboxSize &&
+                my >= checkboxY && my <= checkboxY + checkboxSize) {
+                musicMuted = !musicMuted;
+                return; // avoid also clicking a button in same frame
+            }
 
             // Close Game
             if (mx >= btnX && mx <= btnX + buttonWidth &&

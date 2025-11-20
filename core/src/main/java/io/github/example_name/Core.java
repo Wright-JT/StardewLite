@@ -6,6 +6,7 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -62,7 +63,7 @@ public class Core extends ApplicationAdapter {
     private float playerX, playerY;
     private final int TILE_SIZE = 32;
     private float playerWidth, playerHeight;
-
+    private Sound sound;
     private TileState[][] farm;
     private Crop[][] crops;
     private float[][] regrowTimers;
@@ -136,7 +137,7 @@ public class Core extends ApplicationAdapter {
 
         oceanMap = new TmxMapLoader().load("ocean.tmx");
         oceanRenderer = new OrthogonalTiledMapRenderer(oceanMap, TILE_SIZE / 8f);
-
+        sound = new Sound();
         walking = new Walking();
 
         float PLAYER_SCALE = 2.2f;
@@ -265,10 +266,19 @@ public class Core extends ApplicationAdapter {
             playerY = nextY;
         }
 
+        if (sound != null) {
+            sound.setMusicMuted(ui.isMusicMuted());  // you’d add setMusicMuted(...) in Sound
+        }
+
+
 // ✅ update walking animation AFTER we know movement input
         if (walking != null) {
             walking.update(delta, movingLeft, movingRight, movingUp, movingDown);
         }
+
+        boolean moving = movingLeft || movingRight || movingUp || movingDown;
+        sound.update(delta, moving);
+
 
 
         oceanRenderer.setView(camera);
@@ -311,7 +321,7 @@ public class Core extends ApplicationAdapter {
                 else if (item.equals("BLUEBERRY")) amount = 40f;
 
                 hunger = Math.min(maxHunger, hunger + amount);
-
+                if (sound != null) sound.playBurp();
             }
         }
 
@@ -503,12 +513,14 @@ public class Core extends ApplicationAdapter {
         Crop crop = crops[x][y];
         if (crop != null && crop.fullyGrown) {
             handleHarvest(x, y);
+            if (sound != null) sound.playPickCrop();
             return;
         }
 
         // If there’s no crop, and the tile is tilled — untill it
         if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
             farm[x][y] = TileState.EMPTY;
+            if (sound != null) sound.playBreakLand();
             regrowTimers[x][y] = 60f; // start regrow timer for decor/grass
         }
     }
@@ -546,6 +558,7 @@ public class Core extends ApplicationAdapter {
         // --- If there's a fully grown crop, harvest it ---
         if (crops[x][y] != null) {
             handleHarvest(x, y);
+            if (sound != null) sound.playPickCrop();
             return;
         }
 
@@ -554,6 +567,7 @@ public class Core extends ApplicationAdapter {
             farm[x][y] = TileState.TILLED;
             Island.DECOR[y][x] = 0;
             Island.FLOWER[y][x] = 0;
+            if (sound != null) sound.playHoeLand();
             return;
         }
 
@@ -723,10 +737,16 @@ public class Core extends ApplicationAdapter {
                     ny - (h - TILE_SIZE) / 2f,
                     w, h);
                 if (isNearPlayer(npc.x, npc.y, 2)) {
+                    String prompt = "Press E to Trade";
+                    font.getData().setScale(1.25f);
                     font.setColor(Color.YELLOW);
-                    font.draw(batch, "Press E to Trade", nx - 10, ny + h + 16);
+                    GlyphLayout layout = new GlyphLayout(font, prompt);
+                    float textX = nx + (w - layout.width) / 1.5f;
+                    float textY = ny + h + 16;
+                    font.draw(batch, layout, textX, textY);
                     font.setColor(Color.WHITE);
                 }
+
             }
         }
         batch.end();
@@ -742,26 +762,73 @@ public class Core extends ApplicationAdapter {
         if (!shopOpen) {
             for (Island.NPC npc : Island.NPCS) {
                 if (npc.type == Island.NPCType.FARMER && isNearPlayer(npc.x, npc.y, 2)) {
-                    if (Gdx.input.isKeyJustPressed(Input.Keys.E)) shopOpen = true;
+                    if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+                        shopOpen = true;
+                        // Play vendor sound ONCE when shop opens
+                        if (sound != null) sound.playVendor();
+                    }
                 }
             }
         } else {
-            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) shopOpen = false;
-            if (Gdx.input.isKeyJustPressed(Input.Keys.TAB)) shopSellTab = !shopSellTab;
+            // Close shop
+            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+                shopOpen = false;
+                return;
+            }
+
+            // Toggle buy/sell tab
+            if (Gdx.input.isKeyJustPressed(Input.Keys.TAB)) {
+                shopSellTab = !shopSellTab;
+                if (sound != null) sound.playVendor(); // optional click sound
+            }
 
             if (shopSellTab) {
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) { int s = sellAllOf("WHEAT"); CurrencyManager.addCurrency(s * 10); }
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) { int s = sellAllOf("CARROT"); CurrencyManager.addCurrency(s * 20); }
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) { int s = sellAllOf("POTATO"); CurrencyManager.addCurrency(s * 50); }
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_4)) { int s = sellAllOf("BLUEBERRY"); CurrencyManager.addCurrency(s * 100); }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {
+                    int s = sellAllOf("WHEAT");
+                    if (s > 0) {
+                        CurrencyManager.addCurrency(s * 10);
+                        if (sound != null) sound.playMoney();
+                    }
+                }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
+                    int s = sellAllOf("CARROT");
+                    if (s > 0) {
+                        CurrencyManager.addCurrency(s * 20);
+                        if (sound != null) sound.playMoney();
+                    }
+                }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) {
+                    int s = sellAllOf("POTATO");
+                    if (s > 0) {
+                        CurrencyManager.addCurrency(s * 50);
+                        if (sound != null) sound.playMoney();
+                    }
+                }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_4)) {
+                    int s = sellAllOf("BLUEBERRY");
+                    if (s > 0) {
+                        CurrencyManager.addCurrency(s * 100);
+                        if (sound != null) sound.playMoney();
+                    }
+                }
             } else {
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) buySeed("WHEAT_SEED", 0);
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) buySeed("CARROT_SEED", 10);
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) buySeed("POTATO_SEED", 20);
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_4)) buySeed("BLUEBERRY_SEED", 40);
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {
+                    buySeed("WHEAT_SEED", 0);
+                }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
+                    buySeed("CARROT_SEED", 10);
+                }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) {
+                    buySeed("POTATO_SEED", 20);
+                }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_4)) {
+                    buySeed("BLUEBERRY_SEED", 40);
+
+                }
             }
         }
     }
+
 
     private void buySeed(String seed, int cost) {
         if (CurrencyManager.getCurrency() < cost) return;
@@ -866,6 +933,7 @@ public class Core extends ApplicationAdapter {
         grass1Texture.dispose();
         grass2Texture.dispose();
         grass3Texture.dispose();
+        if (sound != null) sound.dispose();
         if (coinTexture != null) coinTexture.dispose();
         if (dirtTexture != null) dirtTexture.dispose();
         if (farmerNpcTexture != null) farmerNpcTexture.dispose();
