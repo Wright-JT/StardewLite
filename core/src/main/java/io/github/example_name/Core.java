@@ -28,8 +28,7 @@ public class Core extends ApplicationAdapter {
     private SpriteBatch batch;
     private BitmapFont font;
     private Random random = new Random();
-
-    // NEW
+    private boolean deathSoundPlayed = false;
     private Texture grassTexture, sandTexture;
     private Walking walking;
     private Texture wheatTexture, carrotTexture, potatoTexture, blueberryTexture;
@@ -428,16 +427,14 @@ public class Core extends ApplicationAdapter {
         if (shopOpen) drawShopWindow();
         chat.draw(shapeRenderer, batch, font);
 
-
-/// ✅ Draw health/hunger + death overlay, and check for respawn click
+///  Draw health/hunger + death overlay, and check for respawn click
         boolean respawnClicked = ui.draw(shapeRenderer, batch, font,
             health, maxHealth, hunger, maxHunger);
-
         if (respawnClicked) {
             respawnPlayer();
         }
 
-// ✅ Options: Close Game
+//  Options: Close Game
         if (ui.pollCloseRequested()) {
             Gdx.app.exit();
         }
@@ -469,22 +466,16 @@ public class Core extends ApplicationAdapter {
         // Reset stats
         health = maxHealth;
         hunger = maxHunger;
-
-        // Move back to spawn
+        deathSoundPlayed = false;
         playerX = spawnX;
         playerY = spawnY;
-
-        // ✅ Reset gold to 0
         CurrencyManager.setCurrency(0);
-        CurrencyManager.save(); // optional, but keeps it persisted
-
-        // ✅ Clear inventory items
+        CurrencyManager.save();
         for (int i = 0; i < HOTBAR_SLOTS; i++) {
             inventory[i] = 0;
             inventoryItems[i] = null;
         }
     }
-
 
     private void updateNeeds(float delta) {
         // Hunger drains over time
@@ -497,14 +488,18 @@ public class Core extends ApplicationAdapter {
             health -= HEALTH_STARVE_DRAIN_PER_SECOND * delta;
         }
         // If hunger is full, health slowly regenerates
-        else if (hunger >= maxHunger) {
+        else if (hunger >= maxHunger / 10) {
             health += HEALTH_REGEN_PER_SECOND * delta;
         }
-
-        // Clamp health
         if (health < 0f) health = 0f;
         if (health > maxHealth) health = maxHealth;
+
+        if (health == 0f && !deathSoundPlayed) {
+            deathSoundPlayed = true;
+            if (sound != null) sound.playDeath();
+        }
     }
+
 
     private void handleLeftClick(int x, int y) {
         if (!inBounds(x, y)) return;
@@ -513,7 +508,6 @@ public class Core extends ApplicationAdapter {
         Crop crop = crops[x][y];
         if (crop != null && crop.fullyGrown) {
             handleHarvest(x, y);
-            if (sound != null) sound.playPickCrop();
             return;
         }
 
@@ -535,30 +529,11 @@ public class Core extends ApplicationAdapter {
         float distX = Math.abs(px - x);
         float distY = Math.abs(py - y);
         if (distX > 2 || distY > 2) return;
-
-        // --- EATING LOGIC: right-click on your own tile with food in selected slot ---
         String item = inventoryItems[selectedSlot];
-        if (x == px && y == py && item != null &&
-            (item.equals("CARROT") || item.equals("POTATO") || item.equals("BLUEBERRY"))) {
-
-            // consume one from inventory
-            inventory[selectedSlot]--;
-            if (inventory[selectedSlot] <= 0) {
-                inventory[selectedSlot] = 0;
-                inventoryItems[selectedSlot] = null;
-            }
-
-            // refill hunger bar
-            hunger = maxHunger;
-            return; // do not also interact with soil/crops
-        }
-
-        // --- existing logic below this line ---
 
         // --- If there's a fully grown crop, harvest it ---
         if (crops[x][y] != null) {
             handleHarvest(x, y);
-            if (sound != null) sound.playPickCrop();
             return;
         }
 
@@ -581,7 +556,7 @@ public class Core extends ApplicationAdapter {
             else if ("CARROT_SEED".equals(item)) type = CropType.CARROT;
             else if ("POTATO_SEED".equals(item)) type = CropType.POTATO;
             else if ("BLUEBERRY_SEED".equals(item)) type = CropType.BLUEBERRY;
-
+            if (sound != null) sound.playSeed();
             if (type != null) {
                 crops[x][y] = new Crop(type);
                 inventory[selectedSlot]--;
@@ -623,6 +598,7 @@ public class Core extends ApplicationAdapter {
                     break;
             }
             crops[x][y] = null;
+            if (sound != null) sound.playPickCrop();
         }
     }
 
