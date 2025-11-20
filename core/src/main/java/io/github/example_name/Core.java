@@ -38,6 +38,8 @@ public class Core extends ApplicationAdapter {
     private Texture wheatSeedTexture, carrotSeedTexture, potatoSeedTexture, blueberrySeedTexture;
     private Texture coinTexture;
     private Texture farmerNpcTexture;
+    private Texture pathTexture;
+    private Texture[] fenceTextures; // 16 textures for each connection
     private Chat chat;
     private TiledMap oceanMap;
     private OrthogonalTiledMapRenderer oceanRenderer;
@@ -77,6 +79,7 @@ public class Core extends ApplicationAdapter {
 
     private Host host;
     private Client client;
+    private FenceAndPath fenceAndPath;
 
     enum TileState { EMPTY, TILLED }
     enum CropType { WHEAT, CARROT, POTATO, BLUEBERRY }
@@ -130,6 +133,13 @@ public class Core extends ApplicationAdapter {
         carrotSeedTexture = new Texture(Gdx.files.internal("carrotseed.png"));
         potatoSeedTexture = new Texture(Gdx.files.internal("potatoseed.png"));
         blueberrySeedTexture = new Texture(Gdx.files.internal("blueberryseed.png"));
+        pathTexture = new Texture(Gdx.files.internal("path.png"));
+        fenceTextures = new Texture[16];
+        for (int i = 0; i < 16; i++) {
+            fenceTextures[i] = new Texture(Gdx.files.internal("fence_" + i + ".png"));
+        }
+
+        fenceAndPath = new FenceAndPath(GRID_WIDTH, GRID_HEIGHT, TILE_SIZE, pathTexture, fenceTextures);
 
         coinTexture = new Texture(Gdx.files.internal("8bitCoinPNG.png"));
         farmerNpcTexture = new Texture(Gdx.files.internal("farmer.png"));
@@ -255,12 +265,35 @@ public class Core extends ApplicationAdapter {
                 nextY -= PLAYER_SPEED * delta;
                 movingDown = true;
             }
+            Vector3 mouse = new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0);
+            camera.unproject(mouse);
+            int mx = (int)(mouse.x / TILE_SIZE);
+            int my = (int)(mouse.y / TILE_SIZE);
+
+            int px = (int)(playerX / TILE_SIZE);
+            int py = (int)(playerY / TILE_SIZE);
+
+            int dx = Math.abs(px - mx);
+            int dy = Math.abs(py - my);
+            int radius = 3;
+
+            if (dx <= radius && dy <= radius) {
+                if (Gdx.input.isKeyJustPressed(Input.Keys.F)) {
+                    fenceAndPath.placeFence(mx, my);
+                }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.R)) {
+                    fenceAndPath.placePath(mx, my);
+                }
+            }
         }
 
 // ✅ collision + apply (unchanged)
         int tx = (int) (nextX / TILE_SIZE);
         int ty = (int) (nextY / TILE_SIZE);
-        if (inBounds(tx, ty) && ISLAND_MAP[ty][tx] != 0) {
+
+// ✅ Check bounds AND terrain AND fence
+        if (inBounds(tx, ty) && ISLAND_MAP[ty][tx] != 0
+            && fenceAndPath.getTile(tx, ty) != FenceAndPath.Tile.FENCE) {
             playerX = nextX;
             playerY = nextY;
         }
@@ -407,6 +440,7 @@ public class Core extends ApplicationAdapter {
                 }
             }
         }
+        fenceAndPath.render(batch);
         batch.end();
         drawNPCs();
 
@@ -604,6 +638,19 @@ public class Core extends ApplicationAdapter {
 
     private boolean inBounds(int x, int y) {
         return x >= 0 && y >= 0 && x < GRID_WIDTH && y < GRID_HEIGHT;
+    }
+
+    private boolean isWalkable(int x, int y) {
+        // First, check bounds
+        if (!inBounds(x, y)) return false;
+
+        // Check map terrain
+        if (ISLAND_MAP[y][x] == 0) return false;
+
+        // Check fence
+        if (fenceAndPath.getTile(x, y) == FenceAndPath.Tile.FENCE) return false;
+
+        return true;
     }
 
     private void drawInventory() {
@@ -909,6 +956,10 @@ public class Core extends ApplicationAdapter {
         grass1Texture.dispose();
         grass2Texture.dispose();
         grass3Texture.dispose();
+        pathTexture.dispose();
+        for (Texture t : fenceTextures) {
+            if (t != null) t.dispose();
+        }
         if (sound != null) sound.dispose();
         if (coinTexture != null) coinTexture.dispose();
         if (dirtTexture != null) dirtTexture.dispose();
