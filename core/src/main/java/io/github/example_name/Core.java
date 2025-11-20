@@ -266,6 +266,11 @@ public class Core extends ApplicationAdapter {
             playerY = nextY;
         }
 
+        if (sound != null) {
+            sound.setMusicMuted(ui.isMusicMuted());  // you’d add setMusicMuted(...) in Sound
+        }
+
+
 // ✅ update walking animation AFTER we know movement input
         if (walking != null) {
             walking.update(delta, movingLeft, movingRight, movingUp, movingDown);
@@ -316,7 +321,7 @@ public class Core extends ApplicationAdapter {
                 else if (item.equals("BLUEBERRY")) amount = 40f;
 
                 hunger = Math.min(maxHunger, hunger + amount);
-
+                if (sound != null) sound.playBurp();
             }
         }
 
@@ -780,20 +785,31 @@ public class Core extends ApplicationAdapter {
             if (shopSellTab) {
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {
                     int s = sellAllOf("WHEAT");
-                    CurrencyManager.addCurrency(s * 10);
+                    if (s > 0) {
+                        CurrencyManager.addCurrency(s * 10);
+                        if (sound != null) sound.playMoney();
+                    }
                 }
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
                     int s = sellAllOf("CARROT");
-                    CurrencyManager.addCurrency(s * 20);
+                    if (s > 0) {
+                        CurrencyManager.addCurrency(s * 20);
+                        if (sound != null) sound.playMoney();
+                    }
                 }
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) {
                     int s = sellAllOf("POTATO");
-                    CurrencyManager.addCurrency(s * 50);
+                    if (s > 0) {
+                        CurrencyManager.addCurrency(s * 50);
+                        if (sound != null) sound.playMoney();
+                    }
                 }
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_4)) {
                     int s = sellAllOf("BLUEBERRY");
-                    CurrencyManager.addCurrency(s * 100);
-
+                    if (s > 0) {
+                        CurrencyManager.addCurrency(s * 100);
+                        if (sound != null) sound.playMoney();
+                    }
                 }
             } else {
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {

@@ -16,6 +16,8 @@ public class Sound {
     private com.badlogic.gdx.audio.Sound pickCropSound;
     private com.badlogic.gdx.audio.Sound breakLandSound;
     private com.badlogic.gdx.audio.Sound vendorSound;
+    private com.badlogic.gdx.audio.Sound burpSound;   // <--- added
+    private com.badlogic.gdx.audio.Sound moneySound;  // <--- added
 
     // Single reference to the currently playing music track
     private Music music;
@@ -23,6 +25,9 @@ public class Sound {
     // Music playlist
     private Music[] songs;
     private int currentSongIndex = -1;
+
+    // --- Music mute flag ---
+    private boolean musicMuted = false;
 
     // --- Footstep timing ---
     private float footstepTimer = 0f;
@@ -42,6 +47,8 @@ public class Sound {
         pickCropSound  = loadSoundSafe("pickcrop.mp3");
         breakLandSound = loadSoundSafe("breakland.mp3");
         vendorSound    = loadSoundSafe("vendor.mp3");
+        burpSound      = loadSoundSafe("burp.mp3");    // <--- added
+        moneySound     = loadSoundSafe("money.mp3");   // <--- added
 
         // --- MUSIC PLAYLIST SETUP ---
         songs = new Music[] {
@@ -53,7 +60,7 @@ public class Sound {
         // Start music playlist (random song, then random non-repeating)
         startMusicPlaylist();
 
-        // Make the ocean (wave) sound always playing at 15% volume
+        // Make the ocean (wave) sound always playing at ~15% volume
         if (waveSound != null) {
             waveSound.loop(0.15f);
         }
@@ -151,9 +158,8 @@ public class Sound {
         currentSongIndex = nextIndex;
         music = songs[currentSongIndex];
 
-        music.setLooping(false);  // Important: let it end so the next one can play
+        music.setLooping(false);  // let it end so the next one can play
         music.setVolume(0.3f);
-        music.play();
 
         // When this song ends, pick another random one
         music.setOnCompletionListener(new Music.OnCompletionListener() {
@@ -162,6 +168,43 @@ public class Sound {
                 playNextSong();
             }
         });
+
+        // Respect current mute state when starting a new track
+        applyMusicMuteState();
+    }
+
+    // -------------------------------------------------------------------------
+    // MUSIC MUTE CONTROL
+    // -------------------------------------------------------------------------
+
+    /**
+     * Toggle music mute state. Called from Core, e.g. using UI.isMusicMuted().
+     */
+    public void setMusicMuted(boolean muted) {
+        if (this.musicMuted == muted) return;
+        this.musicMuted = muted;
+        applyMusicMuteState();
+    }
+
+    /**
+     * Apply current mute flag to the active music instance.
+     */
+    private void applyMusicMuteState() {
+        if (music == null) return;
+
+        if (musicMuted) {
+            if (music.isPlaying()) {
+                music.pause();
+            }
+        } else {
+            if (!music.isPlaying()) {
+                music.play();  // resume or start current track
+            }
+        }
+    }
+
+    public boolean isMusicMuted() {
+        return musicMuted;
     }
 
     // -------------------------------------------------------------------------
@@ -194,14 +237,33 @@ public class Sound {
     /** Called when the player tills land. */
     public void playHoeLand() {
         if (hoeLandSound != null) {
-            hoeLandSound.play(0.8f);
+            // Random pitch between ~0.9 and 1.1
+            float pitch = 0.9f + random.nextFloat() * 0.2f;
+            hoeLandSound.play(0.8f, pitch, 0f);
         }
     }
+
 
     /** Called when the player untills / breaks land. */
     public void playBreakLand() {
         if (breakLandSound != null) {
-            breakLandSound.play(0.8f);
+            float pitch = 0.9f + random.nextFloat() * 0.2f; // random between 0.9–1.1
+            breakLandSound.play(0.8f, pitch, 0f);
+        }
+    }
+
+    /** Called when the player burps. */
+    public void playBurp() {
+        if (burpSound != null) {
+            float pitch = 0.9f + random.nextFloat() * 0.2f; // random between 0.9–1.1
+            burpSound.play(0.8f, pitch, 0f);
+        }
+    }
+
+    /** Called when the player gains / spends money. */
+    public void playMoney() {
+        if (moneySound != null) {
+            moneySound.play(0.8f);
         }
     }
 
@@ -290,6 +352,8 @@ public class Sound {
         disposeSound(pickCropSound);  pickCropSound = null;
         disposeSound(breakLandSound); breakLandSound = null;
         disposeSound(vendorSound);    vendorSound = null;
+        disposeSound(burpSound);      burpSound = null;    // <--- added
+        disposeSound(moneySound);     moneySound = null;   // <--- added
     }
 
     private void disposeSound(com.badlogic.gdx.audio.Sound s) {
