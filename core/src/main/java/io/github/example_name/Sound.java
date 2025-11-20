@@ -38,7 +38,7 @@ public class Sound {
     // --- Ambient scheduler thread (birds every ~30s) ---
     private volatile boolean ambientRunning = true;
     private Thread ambientThread;
-    private final Random random = new Random();
+    private final java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
 
     public Sound() {
         // Load all sounds, but be forgiving if a file is missing
