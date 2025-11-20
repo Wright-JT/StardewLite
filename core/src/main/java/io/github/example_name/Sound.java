@@ -16,8 +16,10 @@ public class Sound {
     private com.badlogic.gdx.audio.Sound pickCropSound;
     private com.badlogic.gdx.audio.Sound breakLandSound;
     private com.badlogic.gdx.audio.Sound vendorSound;
-    private com.badlogic.gdx.audio.Sound burpSound;   // <--- added
-    private com.badlogic.gdx.audio.Sound moneySound;  // <--- added
+    private com.badlogic.gdx.audio.Sound burpSound;    // <--- existing
+    private com.badlogic.gdx.audio.Sound moneySound;   // <--- existing
+    private com.badlogic.gdx.audio.Sound deathSound;   // <--- added
+    private com.badlogic.gdx.audio.Sound seedSound;    // <--- added
 
     // Single reference to the currently playing music track
     private Music music;
@@ -36,7 +38,7 @@ public class Sound {
     // --- Ambient scheduler thread (birds every ~30s) ---
     private volatile boolean ambientRunning = true;
     private Thread ambientThread;
-    private final Random random = new Random();
+    private final java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
 
     public Sound() {
         // Load all sounds, but be forgiving if a file is missing
@@ -47,8 +49,10 @@ public class Sound {
         pickCropSound  = loadSoundSafe("pickcrop.mp3");
         breakLandSound = loadSoundSafe("breakland.mp3");
         vendorSound    = loadSoundSafe("vendor.mp3");
-        burpSound      = loadSoundSafe("burp.mp3");    // <--- added
-        moneySound     = loadSoundSafe("money.mp3");   // <--- added
+        burpSound      = loadSoundSafe("burp.mp3");
+        moneySound     = loadSoundSafe("money.mp3");
+        deathSound     = loadSoundSafe("death.mp3");   // <--- added
+        seedSound      = loadSoundSafe("seed.mp3");    // <--- added
 
         // --- MUSIC PLAYLIST SETUP ---
         songs = new Music[] {
@@ -68,10 +72,6 @@ public class Sound {
         // Start background ambient sound scheduler (birds only)
         startAmbientThread();
     }
-
-    // -------------------------------------------------------------------------
-    // SAFE LOAD HELPERS
-    // -------------------------------------------------------------------------
 
     private com.badlogic.gdx.audio.Sound loadSoundSafe(String fileName) {
         try {
@@ -243,7 +243,6 @@ public class Sound {
         }
     }
 
-
     /** Called when the player untills / breaks land. */
     public void playBreakLand() {
         if (breakLandSound != null) {
@@ -263,14 +262,31 @@ public class Sound {
     /** Called when the player gains / spends money. */
     public void playMoney() {
         if (moneySound != null) {
-            moneySound.play(0.8f);
+            moneySound.play(0.7f);
+        }
+    }
+
+    /** Called when the player dies. */
+    public void playDeath() {                      // <--- added
+        if (deathSound != null) {
+            deathSound.play(0.6f);                 // tweak volume as desired
+        }
+    }
+
+    /** Called when the player plants a seed. */
+    public void playSeed() {                       // <--- added
+        if (seedSound != null) {
+            // Random pitch between ~0.9 and 1.1 so planting sounds varied
+            float pitch = 0.9f + random.nextFloat() * 0.2f;
+            seedSound.play(0.7f, pitch, 0f);       // slightly quieter than default
         }
     }
 
     /** Called when the player picks / harvests a crop. */
     public void playPickCrop() {
         if (pickCropSound != null) {
-            pickCropSound.play(0.9f);
+            // reduced slightly from 0.9f -> 0.8f
+            pickCropSound.play(0.8f);              // <--- volume reduced
         }
     }
 
@@ -352,8 +368,10 @@ public class Sound {
         disposeSound(pickCropSound);  pickCropSound = null;
         disposeSound(breakLandSound); breakLandSound = null;
         disposeSound(vendorSound);    vendorSound = null;
-        disposeSound(burpSound);      burpSound = null;    // <--- added
-        disposeSound(moneySound);     moneySound = null;   // <--- added
+        disposeSound(burpSound);      burpSound = null;
+        disposeSound(moneySound);     moneySound = null;
+        disposeSound(deathSound);     deathSound = null;
+        disposeSound(seedSound);      seedSound = null;
     }
 
     private void disposeSound(com.badlogic.gdx.audio.Sound s) {
