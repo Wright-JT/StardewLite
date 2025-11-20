@@ -39,6 +39,13 @@ public class FenceAndPath {
         if (grid[x][y] == Tile.FENCE) grid[x][y] = Tile.EMPTY;
     }
 
+    public void removePath(int x, int y) {
+        if (!inBounds(x, y)) return;
+        if (grid[x][y] == Tile.PATH) {
+            grid[x][y] = Tile.EMPTY;
+        }
+    }
+
     public void placePath(int x, int y) {
         if (!inBounds(x, y)) return;
         grid[x][y] = Tile.PATH;

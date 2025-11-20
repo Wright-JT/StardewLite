@@ -52,7 +52,7 @@ public class Core extends ApplicationAdapter {
     private float hunger = 100f;
 
     // Rates
-    private static final float HUNGER_DRAIN_PER_SECOND = 0.1f;      // hunger lost per second
+    private static final float HUNGER_DRAIN_PER_SECOND = 0.8f;      // hunger lost per second
     private static final float HEALTH_STARVE_DRAIN_PER_SECOND = 2.0f; // health lost per second at 0 hunger
     private static final float HEALTH_REGEN_PER_SECOND = 1.5f;      // health gained per second at full hunger
 
@@ -531,8 +531,22 @@ public class Core extends ApplicationAdapter {
     private void handleLeftClick(int x, int y) {
         if (!inBounds(x, y)) return;
 
-        //  Prevent tilling if there is a fence
-        if (fenceAndPath.getTile(x, y) == FenceAndPath.Tile.FENCE) return;
+        // --- NEW: break fence or path if present ---
+        FenceAndPath.Tile tile = fenceAndPath.getTile(x, y);
+
+        if (tile == FenceAndPath.Tile.FENCE) {
+            fenceAndPath.removeFence(x, y);
+            if (sound != null) sound.playBreakLand(); // or a dedicated break sound
+            return; // stop here, don’t also till/harvest
+        }
+
+        if (tile == FenceAndPath.Tile.PATH) {
+            fenceAndPath.removePath(x, y);
+            if (sound != null) sound.playBreakLand();
+            return;
+        }
+
+        // --- existing behavior below ---
 
         // Harvest if a crop is grown
         Crop crop = crops[x][y];
@@ -548,7 +562,6 @@ public class Core extends ApplicationAdapter {
             regrowTimers[x][y] = 60f; // start regrow timer for decor/grass
         }
     }
-
 
     private void handleRightClick(int x, int y) {
         if (!inBounds(x, y)) return;
@@ -572,7 +585,7 @@ public class Core extends ApplicationAdapter {
         // =====================================================================
         if (item != null && inventory[selectedSlot] > 0) {
 
-            if ("FENCE".equals(item)) {
+            if ("Fence".equals(item)) {
                 if (canPlaceStructure(x, y)) {
                     fenceAndPath.placeFence(x, y);
                     inventory[selectedSlot]--;
@@ -581,7 +594,7 @@ public class Core extends ApplicationAdapter {
                 }
             }
 
-            if ("STONE PATH".equals(item)) {
+            if ("Stone Path".equals(item) || "STONE PATH".equals(item)) {
                 if (canPlaceStructure(x, y)) {
                     fenceAndPath.placePath(x, y);
                     inventory[selectedSlot]--;
