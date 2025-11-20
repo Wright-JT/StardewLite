@@ -35,10 +35,9 @@ public class Core extends ApplicationAdapter {
     private Texture grass1Texture, grass2Texture, grass3Texture;
     private Texture flower1Texture, flower2Texture, flower3Texture;
     private Texture dirtTexture;
-    private Texture wheatSeedTexture, carrotSeedTexture, potatoSeedTexture, blueberrySeedTexture;
+    private Texture wheatSeedTexture, carrotSeedTexture, potatoSeedTexture, blueberrySeedTexture, pathTexture, fenceTexture;
     private Texture coinTexture;
     private Texture farmerNpcTexture;
-    private Texture pathTexture;
     private Texture[] fenceTextures; // 16 textures for each connection
     private Chat chat;
     private TiledMap oceanMap;
@@ -53,7 +52,7 @@ public class Core extends ApplicationAdapter {
     private float hunger = 100f;
 
     // Rates
-    private static final float HUNGER_DRAIN_PER_SECOND = 1.0f;      // hunger lost per second
+    private static final float HUNGER_DRAIN_PER_SECOND = 0.1f;      // hunger lost per second
     private static final float HEALTH_STARVE_DRAIN_PER_SECOND = 2.0f; // health lost per second at 0 hunger
     private static final float HEALTH_REGEN_PER_SECOND = 1.5f;      // health gained per second at full hunger
 
@@ -133,7 +132,8 @@ public class Core extends ApplicationAdapter {
         carrotSeedTexture = new Texture(Gdx.files.internal("carrotseed.png"));
         potatoSeedTexture = new Texture(Gdx.files.internal("potatoseed.png"));
         blueberrySeedTexture = new Texture(Gdx.files.internal("blueberryseed.png"));
-        pathTexture = new Texture(Gdx.files.internal("path.png"));
+        pathTexture = new Texture(Gdx.files.internal("Stone Path.png"));
+        fenceTexture = new Texture(Gdx.files.internal("fence_0.png"));
         fenceTextures = new Texture[16];
         for (int i = 0; i < 16; i++) {
             fenceTextures[i] = new Texture(Gdx.files.internal("fence_" + i + ".png"));
@@ -277,14 +277,7 @@ public class Core extends ApplicationAdapter {
             int dy = Math.abs(py - my);
             int radius = 3;
 
-            if (dx <= radius && dy <= radius) {
-                if (Gdx.input.isKeyJustPressed(Input.Keys.F)) {
-                    fenceAndPath.placeFence(mx, my);
-                }
-                if (Gdx.input.isKeyJustPressed(Input.Keys.R)) {
-                    fenceAndPath.placePath(mx, my);
-                }
-            }
+
         }
 
 // ✅ collision + apply (unchanged)
@@ -538,6 +531,9 @@ public class Core extends ApplicationAdapter {
     private void handleLeftClick(int x, int y) {
         if (!inBounds(x, y)) return;
 
+        //  Prevent tilling if there is a fence
+        if (fenceAndPath.getTile(x, y) == FenceAndPath.Tile.FENCE) return;
+
         // Harvest if a crop is grown
         Crop crop = crops[x][y];
         if (crop != null && crop.fullyGrown) {
@@ -545,7 +541,7 @@ public class Core extends ApplicationAdapter {
             return;
         }
 
-        // If there’s no crop, and the tile is tilled — untill it
+        // If there’s no crop, untill the soil
         if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
             farm[x][y] = TileState.EMPTY;
             if (sound != null) sound.playBreakLand();
@@ -571,19 +567,44 @@ public class Core extends ApplicationAdapter {
             return;
         }
 
-        // --- If soil is EMPTY, till it ---
-        if (ISLAND_MAP[y][x] == 1 && farm[x][y] == TileState.EMPTY) {
+        // =====================================================================
+        //  NEW — Fence / Path placement happens BEFORE soil tilling
+        // =====================================================================
+        if (item != null && inventory[selectedSlot] > 0) {
+
+            if ("FENCE".equals(item)) {
+                if (canPlaceStructure(x, y)) {
+                    fenceAndPath.placeFence(x, y);
+                    inventory[selectedSlot]--;
+                    if (inventory[selectedSlot] <= 0) inventoryItems[selectedSlot] = null;
+                    return;
+                }
+            }
+
+            if ("STONE PATH".equals(item)) {
+                if (canPlaceStructure(x, y)) {
+                    fenceAndPath.placePath(x, y);
+                    inventory[selectedSlot]--;
+                    if (inventory[selectedSlot] <= 0) inventoryItems[selectedSlot] = null;
+                    return;
+                }
+            }
+        }
+
+        if (farm[x][y] == TileState.EMPTY
+            && fenceAndPath.getTile(x, y) != FenceAndPath.Tile.FENCE
+            && fenceAndPath.getTile(x, y) != FenceAndPath.Tile.PATH) { // <-- new check
             farm[x][y] = TileState.TILLED;
             Island.DECOR[y][x] = 0;
             Island.FLOWER[y][x] = 0;
             if (sound != null) sound.playHoeLand();
-            return;
         }
 
         // --- If soil is TILLED, try to plant seeds ---
         if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
             item = inventoryItems[selectedSlot]; // re-read
             if (item == null || inventory[selectedSlot] <= 0) return;
+            if (fenceAndPath.getTile(x, y) == FenceAndPath.Tile.PATH) return;
 
             CropType type = null;
             if ("WHEAT_SEED".equals(item)) type = CropType.WHEAT;
@@ -689,6 +710,8 @@ public class Core extends ApplicationAdapter {
                 else if ("CARROT_SEED".equals(item)) tex = carrotSeedTexture;
                 else if ("POTATO_SEED".equals(item)) tex = potatoSeedTexture;
                 else if ("BLUEBERRY_SEED".equals(item)) tex = blueberrySeedTexture;
+                else if ("Fence".equals(item)) tex = fenceTexture;
+                else if ("STONE PATH".equals(item) || "Stone Path".equals(item)) tex = pathTexture;
 
                 if (tex != null) {
                     float size = slotSize * 0.9f;
@@ -834,6 +857,7 @@ public class Core extends ApplicationAdapter {
                         if (sound != null) sound.playMoney();
                     }
                 }
+
             } else {
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {
                     buySeed("WHEAT_SEED", 0);
@@ -848,6 +872,15 @@ public class Core extends ApplicationAdapter {
                     buySeed("BLUEBERRY_SEED", 40);
 
                 }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_5)) {
+                    buyItem("Fence", 30);
+
+                }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_6)) {
+                    buyItem("Stone Path", 10);
+
+                }
+
             }
         }
     }
@@ -862,6 +895,37 @@ public class Core extends ApplicationAdapter {
         if (slot != -1) {
             if (inventoryItems[slot] == null) inventoryItems[slot] = seed;
             inventory[slot]++;
+            CurrencyManager.addCurrency(-cost);
+        }
+    }
+
+    private void buyItem(String item, int cost) {
+        if (CurrencyManager.getCurrency() < cost) return;
+
+        int slot = -1;
+
+        // Check if the item already exists in inventory
+        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+            if (inventoryItems[i] != null && inventoryItems[i].equals(item)) {
+                slot = i;
+                break;
+            }
+        }
+
+        // If it doesn't exist, find an empty slot
+        if (slot == -1) {
+            for (int i = 0; i < HOTBAR_SLOTS; i++) {
+                if (inventoryItems[i] == null) {
+                    slot = i;
+                    break;
+                }
+            }
+        }
+
+        // If there's a slot, add to it
+        if (slot != -1) {
+            if (inventoryItems[slot] == null) inventoryItems[slot] = item;
+            inventory[slot] += 10; // for example, give 10 items per purchase
             CurrencyManager.addCurrency(-cost);
         }
     }
@@ -913,6 +977,8 @@ public class Core extends ApplicationAdapter {
             font.draw(batch, "[2] Buy CARROT SEED (10)", x + 14, y + h - 68);
             font.draw(batch, "[3] Buy POTATO SEED (20)", x + 14, y + h - 94);
             font.draw(batch, "[4] Buy BLUEBERRY SEED (40)", x + 14, y + h - 120);
+            font.draw(batch, "[5] Buy Fence (30)", x + 14, y + h - 146);
+            font.draw(batch, "[6] Buy Stone Path (10)", x + 14, y + h - 172);
             font.setColor(Color.GRAY);
             font.draw(batch, "TAB to switch to Sell, ESC to close", x + 14, y + 20);
         }
@@ -932,6 +998,12 @@ public class Core extends ApplicationAdapter {
             }
         }
         return total;
+    }
+
+    private boolean canPlaceStructure(int x, int y) {
+        return crops[x][y] == null
+            && farm[x][y] != TileState.TILLED   // <-- prevent placement on tilled land
+            && fenceAndPath.getTile(x, y) == FenceAndPath.Tile.EMPTY;
     }
 
     @Override
@@ -957,6 +1029,7 @@ public class Core extends ApplicationAdapter {
         grass2Texture.dispose();
         grass3Texture.dispose();
         pathTexture.dispose();
+        fenceTexture.dispose();
         for (Texture t : fenceTextures) {
             if (t != null) t.dispose();
         }
