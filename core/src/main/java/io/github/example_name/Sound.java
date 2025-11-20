@@ -4,8 +4,6 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.files.FileHandle;
 
-import java.util.Random;
-
 public class Sound {
 
     // --- LibGDX audio references (use fully-qualified com.badlogic.gdx.audio.Sound) ---
@@ -16,10 +14,14 @@ public class Sound {
     private com.badlogic.gdx.audio.Sound pickCropSound;
     private com.badlogic.gdx.audio.Sound breakLandSound;
     private com.badlogic.gdx.audio.Sound vendorSound;
-    private com.badlogic.gdx.audio.Sound burpSound;    // <--- existing
-    private com.badlogic.gdx.audio.Sound moneySound;   // <--- existing
-    private com.badlogic.gdx.audio.Sound deathSound;   // <--- added
-    private com.badlogic.gdx.audio.Sound seedSound;    // <--- added
+    private com.badlogic.gdx.audio.Sound burpSound;       // existing
+    private com.badlogic.gdx.audio.Sound moneySound;      // existing
+    private com.badlogic.gdx.audio.Sound deathSound;      // existing
+    private com.badlogic.gdx.audio.Sound seedSound;       // existing
+
+    // NEW: sounds for path and fence placement
+    private com.badlogic.gdx.audio.Sound pathSound;       // path.mp3
+    private com.badlogic.gdx.audio.Sound fenceSound;      // fence.mp3
 
     // Single reference to the currently playing music track
     private Music music;
@@ -38,7 +40,8 @@ public class Sound {
     // --- Ambient scheduler thread (birds every ~30s) ---
     private volatile boolean ambientRunning = true;
     private Thread ambientThread;
-    private final java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+    private final java.util.concurrent.ThreadLocalRandom random =
+        java.util.concurrent.ThreadLocalRandom.current();
 
     public Sound() {
         // Load all sounds, but be forgiving if a file is missing
@@ -51,8 +54,12 @@ public class Sound {
         vendorSound    = loadSoundSafe("vendor.mp3");
         burpSound      = loadSoundSafe("burp.mp3");
         moneySound     = loadSoundSafe("money.mp3");
-        deathSound     = loadSoundSafe("death.mp3");   // <--- added
-        seedSound      = loadSoundSafe("seed.mp3");    // <--- added
+        deathSound     = loadSoundSafe("death.mp3");
+        seedSound      = loadSoundSafe("seed.mp3");
+
+        // NEW: path + fence placement SFX
+        pathSound      = loadSoundSafe("path.mp3");
+        fenceSound     = loadSoundSafe("fence.mp3");
 
         // --- MUSIC PLAYLIST SETUP ---
         songs = new Music[] {
@@ -177,18 +184,14 @@ public class Sound {
     // MUSIC MUTE CONTROL
     // -------------------------------------------------------------------------
 
-    /**
-     * Toggle music mute state. Called from Core, e.g. using UI.isMusicMuted().
-     */
+    /** Called from Core, e.g. using UI.isMusicMuted(). */
     public void setMusicMuted(boolean muted) {
         if (this.musicMuted == muted) return;
         this.musicMuted = muted;
         applyMusicMuteState();
     }
 
-    /**
-     * Apply current mute flag to the active music instance.
-     */
+    /** Apply current mute flag to the active music instance. */
     private void applyMusicMuteState() {
         if (music == null) return;
 
@@ -237,7 +240,6 @@ public class Sound {
     /** Called when the player tills land. */
     public void playHoeLand() {
         if (hoeLandSound != null) {
-            // Random pitch between ~0.9 and 1.1
             float pitch = 0.9f + random.nextFloat() * 0.2f;
             hoeLandSound.play(0.8f, pitch, 0f);
         }
@@ -246,7 +248,7 @@ public class Sound {
     /** Called when the player untills / breaks land. */
     public void playBreakLand() {
         if (breakLandSound != null) {
-            float pitch = 0.9f + random.nextFloat() * 0.2f; // random between 0.9–1.1
+            float pitch = 0.9f + random.nextFloat() * 0.2f;
             breakLandSound.play(0.8f, pitch, 0f);
         }
     }
@@ -254,7 +256,7 @@ public class Sound {
     /** Called when the player burps. */
     public void playBurp() {
         if (burpSound != null) {
-            float pitch = 0.9f + random.nextFloat() * 0.2f; // random between 0.9–1.1
+            float pitch = 0.9f + random.nextFloat() * 0.2f;
             burpSound.play(0.8f, pitch, 0f);
         }
     }
@@ -267,26 +269,24 @@ public class Sound {
     }
 
     /** Called when the player dies. */
-    public void playDeath() {                      // <--- added
+    public void playDeath() {
         if (deathSound != null) {
-            deathSound.play(0.6f);                 // tweak volume as desired
+            deathSound.play(0.6f);
         }
     }
 
     /** Called when the player plants a seed. */
-    public void playSeed() {                       // <--- added
+    public void playSeed() {
         if (seedSound != null) {
-            // Random pitch between ~0.9 and 1.1 so planting sounds varied
             float pitch = 0.9f + random.nextFloat() * 0.2f;
-            seedSound.play(0.7f, pitch, 0f);       // slightly quieter than default
+            seedSound.play(0.7f, pitch, 0f);
         }
     }
 
     /** Called when the player picks / harvests a crop. */
     public void playPickCrop() {
         if (pickCropSound != null) {
-            // reduced slightly from 0.9f -> 0.8f
-            pickCropSound.play(0.8f);              // <--- volume reduced
+            pickCropSound.play(0.8f);
         }
     }
 
@@ -300,9 +300,22 @@ public class Sound {
     /** Internal helper for footsteps with slight random pitch variation. */
     private void playFootstep() {
         if (footstepSound == null) return;
-        // Random pitch between ~0.9 and 1.1 so it doesn't sound robotic
         float pitch = 0.9f + random.nextFloat() * 0.2f;
         footstepSound.play(0.6f, pitch, 0f);
+    }
+
+    public void playPath() {
+        if (pathSound != null) {
+            float pitch = 0.9f + random.nextFloat() * 0.2f;
+            pathSound.play(0.7f, pitch, 0f);
+        }
+    }
+
+    public void playFence() {
+        if (fenceSound != null) {
+            float pitch = 0.9f + random.nextFloat() * 0.2f;
+            fenceSound.play(0.7f, pitch, 0f);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -344,12 +357,12 @@ public class Sound {
             ambientThread.interrupt();
         }
 
-        // Stop current music (don't dispose here, will dispose via playlist loop)
+        // Stop current music
         if (music != null) {
             music.stop();
         }
 
-        // Dispose all music in playlist (avoid double-dispose)
+        // Dispose all music in playlist
         if (songs != null) {
             for (Music m : songs) {
                 if (m != null) {
@@ -372,6 +385,8 @@ public class Sound {
         disposeSound(moneySound);     moneySound = null;
         disposeSound(deathSound);     deathSound = null;
         disposeSound(seedSound);      seedSound = null;
+        disposeSound(pathSound);      pathSound = null;   // NEW
+        disposeSound(fenceSound);     fenceSound = null;  // NEW
     }
 
     private void disposeSound(com.badlogic.gdx.audio.Sound s) {

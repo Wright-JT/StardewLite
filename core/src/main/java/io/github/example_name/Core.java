@@ -37,6 +37,7 @@ public class Core extends ApplicationAdapter {
     private Texture dirtTexture;
     private Texture wheatSeedTexture, carrotSeedTexture, potatoSeedTexture, blueberrySeedTexture, pathTexture, fenceTexture;
     private Texture coinTexture;
+    private Texture hoeTexture;     // NEW
     private Texture farmerNpcTexture;
     private Texture[] fenceTextures; // 16 textures for each connection
     private Chat chat;
@@ -52,7 +53,7 @@ public class Core extends ApplicationAdapter {
     private float hunger = 100f;
 
     // Rates
-    private static final float HUNGER_DRAIN_PER_SECOND = 0.8f;      // hunger lost per second
+    private static final float HUNGER_DRAIN_PER_SECOND = 0.75f;      // hunger lost per second
     private static final float HEALTH_STARVE_DRAIN_PER_SECOND = 2.0f; // health lost per second at 0 hunger
     private static final float HEALTH_REGEN_PER_SECOND = 1.5f;      // health gained per second at full hunger
 
@@ -68,13 +69,17 @@ public class Core extends ApplicationAdapter {
     private Crop[][] crops;
     private float[][] regrowTimers;
 
-    private final int HOTBAR_SLOTS = 9;
     private int selectedSlot = 0;
-    private final int[] inventory = new int[HOTBAR_SLOTS];
-    private final String[] inventoryItems = new String[HOTBAR_SLOTS];
+
+    private final int HOTBAR_SLOTS = 9;
+    private final int EXTRA_SLOTS = 2; // slot 9 and 10 visually appear only when needed
+    private final int TOTAL_SLOTS = HOTBAR_SLOTS + EXTRA_SLOTS;
+    private final int[] inventory = new int[TOTAL_SLOTS];
+    private final String[] inventoryItems = new String[TOTAL_SLOTS];
+
     private float spawnX, spawnY;
     private boolean shopOpen = false;
-    private boolean shopSellTab = true;
+    private boolean shopSellTab = false;
 
     private Host host;
     private Client client;
@@ -115,6 +120,7 @@ public class Core extends ApplicationAdapter {
         ui = new UI();
 
         // --- Load textures ---
+        hoeTexture = new Texture(Gdx.files.internal("hoe.png"));   // NEW
         grass1Texture = new Texture(Gdx.files.internal("grass1.png"));
         grass2Texture = new Texture(Gdx.files.internal("grass2.png"));
         grass3Texture = new Texture(Gdx.files.internal("grass3.png"));
@@ -189,11 +195,28 @@ public class Core extends ApplicationAdapter {
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean scrolled(float amountX, float amountY) {
-                if (amountY > 0) selectedSlot = (selectedSlot + 1) % HOTBAR_SLOTS;
-                else if (amountY < 0) selectedSlot = (selectedSlot - 1 + HOTBAR_SLOTS) % HOTBAR_SLOTS;
+                if (amountY > 0) {
+                    selectedSlot = (selectedSlot + 1) % TOTAL_SLOTS;
+                } else if (amountY < 0) {
+                    selectedSlot = (selectedSlot - 1 + TOTAL_SLOTS) % TOTAL_SLOTS;
+                }
                 return true;
             }
         });
+        // Skip empty overflow slots when scrolling
+        if (selectedSlot >= HOTBAR_SLOTS &&
+            (inventoryItems[selectedSlot] == null || inventory[selectedSlot] <= 0))
+        {
+            // skip forward until we hit something usable or wrap
+            for (int i = 0; i < TOTAL_SLOTS; i++) {
+                selectedSlot = (selectedSlot + 1) % TOTAL_SLOTS;
+
+                if (selectedSlot < HOTBAR_SLOTS ||
+                    (inventoryItems[selectedSlot] != null && inventory[selectedSlot] > 0))
+                    break;
+            }
+        }
+
     }
 
     public Chat getChat() {
@@ -221,8 +244,25 @@ public class Core extends ApplicationAdapter {
             chat.addMessage(message);   // just display it
         }
     }
+    private Texture getTextureForItem(String item) {
+        if (item == null) return null;
 
-
+        switch (item) {
+            case "WHEAT": return wheatTexture;
+            case "CARROT": return carrotTexture;
+            case "POTATO": return potatoTexture;
+            case "BLUEBERRY": return blueberryTexture;
+            case "WHEAT_SEED": return wheatSeedTexture;
+            case "CARROT_SEED": return carrotSeedTexture;
+            case "POTATO_SEED": return potatoSeedTexture;
+            case "BLUEBERRY_SEED": return blueberrySeedTexture;
+            case "Fence": return fenceTexture;
+            case "STONE PATH":
+            case "Stone Path": return pathTexture;
+            case "Hoe": return hoeTexture;
+            default: return null;
+        }
+    }
 
     @Override
     public void render() {
@@ -280,11 +320,9 @@ public class Core extends ApplicationAdapter {
 
         }
 
-// ✅ collision + apply (unchanged)
         int tx = (int) (nextX / TILE_SIZE);
         int ty = (int) (nextY / TILE_SIZE);
 
-// ✅ Check bounds AND terrain AND fence
         if (inBounds(tx, ty) && ISLAND_MAP[ty][tx] != 0
             && fenceAndPath.getTile(tx, ty) != FenceAndPath.Tile.FENCE) {
             playerX = nextX;
@@ -295,8 +333,6 @@ public class Core extends ApplicationAdapter {
             sound.setMusicMuted(ui.isMusicMuted());  // you’d add setMusicMuted(...) in Sound
         }
 
-
-// ✅ update walking animation AFTER we know movement input
         if (walking != null) {
             walking.update(delta, movingLeft, movingRight, movingUp, movingDown);
         }
@@ -401,7 +437,6 @@ public class Core extends ApplicationAdapter {
                     batch.draw(sandTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
 
-                // ✅ Draw tilled soil (use dirt texture)
                 if (farm[x][y] == TileState.TILLED) {
                     batch.draw(dirtTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
@@ -498,7 +533,7 @@ public class Core extends ApplicationAdapter {
         playerY = spawnY;
         CurrencyManager.setCurrency(0);
         CurrencyManager.save();
-        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
             inventory[i] = 0;
             inventoryItems[i] = null;
         }
@@ -531,7 +566,6 @@ public class Core extends ApplicationAdapter {
     private void handleLeftClick(int x, int y) {
         if (!inBounds(x, y)) return;
 
-        // --- NEW: break fence or path if present ---
         FenceAndPath.Tile tile = fenceAndPath.getTile(x, y);
 
         if (tile == FenceAndPath.Tile.FENCE) {
@@ -580,14 +614,12 @@ public class Core extends ApplicationAdapter {
             return;
         }
 
-        // =====================================================================
-        //  NEW — Fence / Path placement happens BEFORE soil tilling
-        // =====================================================================
         if (item != null && inventory[selectedSlot] > 0) {
 
             if ("Fence".equals(item)) {
                 if (canPlaceStructure(x, y)) {
                     fenceAndPath.placeFence(x, y);
+                    if (sound != null) sound.playFence();
                     inventory[selectedSlot]--;
                     if (inventory[selectedSlot] <= 0) inventoryItems[selectedSlot] = null;
                     return;
@@ -597,22 +629,25 @@ public class Core extends ApplicationAdapter {
             if ("Stone Path".equals(item) || "STONE PATH".equals(item)) {
                 if (canPlaceStructure(x, y)) {
                     fenceAndPath.placePath(x, y);
+                    if (sound != null) sound.playPath();
                     inventory[selectedSlot]--;
                     if (inventory[selectedSlot] <= 0) inventoryItems[selectedSlot] = null;
                     return;
                 }
             }
         }
+        if ("Hoe".equals(item)) {
+            if (farm[x][y] == TileState.EMPTY &&
+                fenceAndPath.getTile(x, y) != FenceAndPath.Tile.FENCE &&
+                fenceAndPath.getTile(x, y) != FenceAndPath.Tile.PATH) {
 
-        if (farm[x][y] == TileState.EMPTY
-            && fenceAndPath.getTile(x, y) != FenceAndPath.Tile.FENCE
-            && fenceAndPath.getTile(x, y) != FenceAndPath.Tile.PATH) { // <-- new check
-            farm[x][y] = TileState.TILLED;
-            Island.DECOR[y][x] = 0;
-            Island.FLOWER[y][x] = 0;
-            if (sound != null) sound.playHoeLand();
+                farm[x][y] = TileState.TILLED;
+                Island.DECOR[y][x] = 0;
+                Island.FLOWER[y][x] = 0;
+                if (sound != null) sound.playHoeLand();
+                return;  // stop further processing
+            }
         }
-
         // --- If soil is TILLED, try to plant seeds ---
         if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
             item = inventoryItems[selectedSlot]; // re-read
@@ -641,7 +676,7 @@ public class Core extends ApplicationAdapter {
         Crop crop = crops[x][y];
         if (crop != null && crop.fullyGrown) {
             int slotIndex = -1;
-            for (int i = 0; i < HOTBAR_SLOTS; i++)
+            for (int i = 0; i < TOTAL_SLOTS; i++)
                 if (inventoryItems[i] == null || inventoryItems[i].equals(crop.type.toString())) {
                     slotIndex = i; break;
                 }
@@ -669,69 +704,61 @@ public class Core extends ApplicationAdapter {
             if (sound != null) sound.playPickCrop();
         }
     }
-
     private boolean inBounds(int x, int y) {
         return x >= 0 && y >= 0 && x < GRID_WIDTH && y < GRID_HEIGHT;
     }
-
     private boolean isWalkable(int x, int y) {
-        // First, check bounds
         if (!inBounds(x, y)) return false;
-
-        // Check map terrain
         if (ISLAND_MAP[y][x] == 0) return false;
-
-        // Check fence
         if (fenceAndPath.getTile(x, y) == FenceAndPath.Tile.FENCE) return false;
 
         return true;
     }
-
     private void drawInventory() {
         int slotSize = 40, spacing = 10;
-        int totalWidth = HOTBAR_SLOTS * slotSize + (HOTBAR_SLOTS - 1) * spacing;
-        int startX = (Gdx.graphics.getWidth() - totalWidth) / 2, y = 20;
-
+        int totalWidth = TOTAL_SLOTS * slotSize + (TOTAL_SLOTS - 1) * spacing;
+        int startX = (Gdx.graphics.getWidth() - totalWidth) / 2;
+        int y = 20;
         shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
             0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
+
             int xPos = startX + i * (slotSize + spacing);
             int border = 2;
             shapeRenderer.setColor(0f, 0f, 0f, 1f);
             shapeRenderer.rect(xPos - border, y - border,
                 slotSize + border * 2, slotSize + border * 2);
-            shapeRenderer.setColor(i == selectedSlot ? 0.7f : 0.5f, 0.7f, 0.7f, 1f);
+            float r = (i == selectedSlot) ? 0.7f : 0.5f;
+            float g = 0.7f;
+            float b = 0.7f;
+
+            shapeRenderer.setColor(r, g, b, 1f);
             shapeRenderer.rect(xPos, y, slotSize, slotSize);
         }
         shapeRenderer.end();
-
         batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
             0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
 
         batch.begin();
-        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
             if (inventory[i] > 0 && inventoryItems[i] != null) {
-                Texture tex = null;
-                String item = inventoryItems[i];
-                if ("WHEAT".equals(item)) tex = wheatTexture;
-                else if ("CARROT".equals(item)) tex = carrotTexture;
-                else if ("POTATO".equals(item)) tex = potatoTexture;
-                else if ("BLUEBERRY".equals(item)) tex = blueberryTexture;
-                else if ("WHEAT_SEED".equals(item)) tex = wheatSeedTexture;
-                else if ("CARROT_SEED".equals(item)) tex = carrotSeedTexture;
-                else if ("POTATO_SEED".equals(item)) tex = potatoSeedTexture;
-                else if ("BLUEBERRY_SEED".equals(item)) tex = blueberrySeedTexture;
-                else if ("Fence".equals(item)) tex = fenceTexture;
-                else if ("STONE PATH".equals(item) || "Stone Path".equals(item)) tex = pathTexture;
+
+                Texture tex = getTextureForItem(inventoryItems[i]);
 
                 if (tex != null) {
                     float size = slotSize * 0.9f;
-                    float off = (slotSize - size) / 2f;
-                    batch.draw(tex, startX + i * (slotSize + spacing) + off,
-                        y + off, size, size);
+                    float off  = (slotSize - size) / 2f;
+
+                    batch.draw(tex,
+                        startX + i * (slotSize + spacing) + off,
+                        y + off,
+                        size, size);
                 }
+
                 font.draw(batch, String.valueOf(inventory[i]),
                     startX + i * (slotSize + spacing) + slotSize - 14,
                     y + slotSize - 6);
@@ -739,7 +766,6 @@ public class Core extends ApplicationAdapter {
         }
         batch.end();
     }
-
 
     private void drawCurrencyHUD() {
         shapeRenderer.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
@@ -817,6 +843,29 @@ public class Core extends ApplicationAdapter {
         return Math.abs(px - tx) <= radiusTiles && Math.abs(py - ty) <= radiusTiles;
     }
 
+    private boolean hasItem(String name) {
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
+            if (name.equals(inventoryItems[i]) && inventory[i] > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void buyItemExact(String item, int cost) {
+        if (CurrencyManager.getCurrency() < cost) return;
+
+        // find empty slot
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
+            if (inventoryItems[i] == null) {
+                inventoryItems[i] = item;
+                inventory[i] = 1;
+                CurrencyManager.addCurrency(-cost);
+                return;
+            }
+        }
+    }
+
     private void handleShopInteraction() {
         if (!shopOpen) {
             for (Island.NPC npc : Island.NPCS) {
@@ -873,27 +922,31 @@ public class Core extends ApplicationAdapter {
 
             } else {
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {
-                    buySeed("WHEAT_SEED", 0);
+                    if (!hasItem("Hoe")) {
+                        buyItemExact("Hoe", 0);
+                    }
                 }
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
-                    buySeed("CARROT_SEED", 10);
+                    buySeed("WHEAT_SEED", 0);
                 }
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) {
-                    buySeed("POTATO_SEED", 20);
+                    buySeed("CARROT_SEED", 10);
                 }
                 if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_4)) {
+                    buySeed("POTATO_SEED", 20);
+                }
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_5)) {
                     buySeed("BLUEBERRY_SEED", 40);
 
                 }
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_5)) {
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_6)) {
                     buyItem("Fence", 30);
 
                 }
-                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_6)) {
+                if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_7)) {
                     buyItem("Stone Path", 10);
 
                 }
-
             }
         }
     }
@@ -902,7 +955,7 @@ public class Core extends ApplicationAdapter {
     private void buySeed(String seed, int cost) {
         if (CurrencyManager.getCurrency() < cost) return;
         int slot = -1;
-        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
             if (inventoryItems[i] == null || inventoryItems[i].equals(seed)) { slot = i; break; }
         }
         if (slot != -1) {
@@ -918,7 +971,7 @@ public class Core extends ApplicationAdapter {
         int slot = -1;
 
         // Check if the item already exists in inventory
-        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
             if (inventoryItems[i] != null && inventoryItems[i].equals(item)) {
                 slot = i;
                 break;
@@ -927,7 +980,7 @@ public class Core extends ApplicationAdapter {
 
         // If it doesn't exist, find an empty slot
         if (slot == -1) {
-            for (int i = 0; i < HOTBAR_SLOTS; i++) {
+            for (int i = 0; i < TOTAL_SLOTS; i++) {
                 if (inventoryItems[i] == null) {
                     slot = i;
                     break;
@@ -949,7 +1002,7 @@ public class Core extends ApplicationAdapter {
         batch.setProjectionMatrix(new com.badlogic.gdx.math.Matrix4().setToOrtho2D(
             0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
 
-        int w = 420, h = 200;
+        int w = 420, h = 260;
         int x = (Gdx.graphics.getWidth() - w) / 2;
         int y = (Gdx.graphics.getHeight() - h) / 2;
 
@@ -986,14 +1039,16 @@ public class Core extends ApplicationAdapter {
             font.setColor(Color.GRAY);
             font.draw(batch, "TAB to switch to Buy, ESC to close", x + 14, y + 20);
         } else {
-            font.draw(batch, "[1] Buy WHEAT SEED (0)", x + 14, y + h - 42);
-            font.draw(batch, "[2] Buy CARROT SEED (10)", x + 14, y + h - 68);
-            font.draw(batch, "[3] Buy POTATO SEED (20)", x + 14, y + h - 94);
-            font.draw(batch, "[4] Buy BLUEBERRY SEED (40)", x + 14, y + h - 120);
-            font.draw(batch, "[5] Buy Fence (30)", x + 14, y + h - 146);
-            font.draw(batch, "[6] Buy Stone Path (10)", x + 14, y + h - 172);
+            font.draw(batch, "[1] Buy Hoe (0)", x + 14, y + h - 42);
+            font.draw(batch, "[2] Buy WHEAT SEED (0)", x + 14, y + h - 68);
+            font.draw(batch, "[3] Buy CARROT SEED (10)", x + 14, y + h - 94);
+            font.draw(batch, "[4] Buy POTATO SEED (20)", x + 14, y + h - 120);
+            font.draw(batch, "[5] Buy BLUEBERRY SEED (40)", x + 14, y + h - 146);
+            font.draw(batch, "[6] Buy Fence (30)", x + 14, y + h - 172);
+            font.draw(batch, "[7] Buy Stone Path (10)", x + 14, y + h - 198);
             font.setColor(Color.GRAY);
             font.draw(batch, "TAB to switch to Sell, ESC to close", x + 14, y + 20);
+
         }
 
         font.setColor(Color.WHITE);
@@ -1003,7 +1058,7 @@ public class Core extends ApplicationAdapter {
 
     private int sellAllOf(String type) {
         int total = 0;
-        for (int i = 0; i < HOTBAR_SLOTS; i++) {
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
             if (inventoryItems[i] != null && inventoryItems[i].equals(type)) {
                 total += inventory[i];
                 inventory[i] = 0;
