@@ -36,7 +36,7 @@ public class Chat {
 
     public Chat() {
         // Optional: start with a system message
-        addMessage("System: Arrow keys to move, right click to till land/harvest.\nLeft click to un-till/harvest. Right click with seeds in hand on\ntilled land to plant crop.");
+        addMessage("Tutorial: Arrow keys to move. Left click to un-till land or harvest.\nRight click with seeds in hand on tilled land to plant crop or\nharvest. Buy a hoe and your first seeds from the island vendor!");
     }
     public void setClient(Client client) {
         this.client = client;
