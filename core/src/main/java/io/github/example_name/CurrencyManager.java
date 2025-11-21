@@ -3,11 +3,6 @@ package io.github.example_name;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 
-/**
- * Simple static currency manager with persistence.
- * Methods:
- *   getCurrency(), addCurrency(int), setCurrency(int), save(), load()
- */
 public class CurrencyManager {
     private static final String PREF_NAME = "stardewlite_prefs";
     private static final String KEY_CURRENCY = "currency";

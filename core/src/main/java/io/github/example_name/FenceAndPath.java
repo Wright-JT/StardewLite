@@ -64,10 +64,6 @@ public class FenceAndPath {
         return inBounds(x, y) && grid[x][y] == Tile.FENCE;
     }
 
-    /**
-     * Compute the index for fence texture based on neighboring fences.
-     * Bitmask order: up=1, down=2, left=4, right=8
-     */
     private int getFenceIndex(int x, int y) {
         int index = 0;
         if (hasFence(x, y + 1)) index |= 1;    // up
@@ -106,8 +102,6 @@ public class FenceAndPath {
     private void refreshFence(int x, int y) {
         if (!inBounds(x, y)) return;
         if (grid[x][y] == Tile.FENCE) {
-            // Just recomputing connection index happens automatically in render(),
-            // so nothing is needed here unless you cache textures.
         }
     }
 }

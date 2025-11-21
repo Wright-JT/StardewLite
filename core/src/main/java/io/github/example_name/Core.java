@@ -72,7 +72,7 @@ public class Core extends ApplicationAdapter {
     private int selectedSlot = 0;
 
     private final int HOTBAR_SLOTS = 9;
-    private final int EXTRA_SLOTS = 2; // slot 9 and 10 visually appear only when needed
+    private final int EXTRA_SLOTS = 2;
     private final int TOTAL_SLOTS = HOTBAR_SLOTS + EXTRA_SLOTS;
     private final int[] inventory = new int[TOTAL_SLOTS];
     private final String[] inventoryItems = new String[TOTAL_SLOTS];
@@ -440,7 +440,6 @@ public class Core extends ApplicationAdapter {
                 if (farm[x][y] == TileState.TILLED) {
                     batch.draw(dirtTexture, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 }
-                ///  Draw crop
                 Crop c = crops[x][y];
                 if (c != null) {
                     float size = c.getSize() * TILE_SIZE;
@@ -580,15 +579,12 @@ public class Core extends ApplicationAdapter {
             return;
         }
 
-        // --- existing behavior below ---
-
         // Harvest if a crop is grown
         Crop crop = crops[x][y];
         if (crop != null && crop.fullyGrown) {
             handleHarvest(x, y);
             return;
         }
-
         // If there’s no crop, untill the soil
         if (farm[x][y] == TileState.TILLED && crops[x][y] == null) {
             farm[x][y] = TileState.EMPTY;
@@ -780,8 +776,6 @@ public class Core extends ApplicationAdapter {
         int panelH = 54;
         int x = 14;
         int y = Gdx.graphics.getHeight() - panelH - 14;
-
-        // ✅ Enable blending so alpha works
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
@@ -791,8 +785,6 @@ public class Core extends ApplicationAdapter {
         shapeRenderer.setColor(1f, 1f, 1f, 0.15f);  // highlight stripe
         shapeRenderer.rect(x, y + panelH - 4, panelW, 4);
         shapeRenderer.end();
-
-        // Disable blending after drawing the panel
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
         batch.begin();

@@ -22,7 +22,7 @@ import java.util.List;
  */
 public class Host {
 
-    /** Callback interface for messages received by the server. */
+
     public interface MessageListener {
         void onMessageReceived(String message);
     }
@@ -37,27 +37,15 @@ public class Host {
     private final List<ClientHandler> clients =
         Collections.synchronizedList(new ArrayList<>());
 
-    /**
-     * Creates a Host chat server on the given port.
-     *
-     * @param port      TCP port to listen on (e.g., 5000).
-     * @param listener  callback for messages that arrive at the server.
-     */
     public Host(int port, MessageListener listener) {
         this.port = port;
         this.listener = listener;
     }
 
-    /**
-     * Convenience constructor with default port 5000.
-     */
     public Host(MessageListener listener) {
         this(5000, listener);
     }
 
-    /**
-     * Starts the server on a background thread.
-     */
     public synchronized void start() {
         if (running) return;
 
@@ -67,9 +55,6 @@ public class Host {
         serverThread.start();
     }
 
-    /**
-     * Stops the server and disconnects all clients.
-     */
     public synchronized void stop() {
         running = false;
 
@@ -89,17 +74,11 @@ public class Host {
         }
     }
 
-    /**
-     * Returns whether the server is currently running.
-     */
+
     public boolean isRunning() {
         return running;
     }
 
-    /**
-     * Broadcasts a message to all connected clients.
-     * You can also call this from your game to send "System" messages.
-     */
     public void broadcast(String message) {
         synchronized (clients) {
             // Use a copy to avoid ConcurrentModificationException
@@ -114,10 +93,6 @@ public class Host {
             listener.onMessageReceived(message);
         }
     }
-
-    // -------------------------------------------------------------------------
-    // INTERNAL SERVER LOOP
-    // -------------------------------------------------------------------------
 
     private void runServer() {
         try (ServerSocket server = new ServerSocket(port)) {
@@ -155,10 +130,6 @@ public class Host {
             System.out.println("[Host] Server stopped.");
         }
     }
-
-    // -------------------------------------------------------------------------
-    // CLIENT HANDLER
-    // -------------------------------------------------------------------------
 
     private class ClientHandler implements Runnable {
         private final Socket socket;
