@@ -210,16 +210,6 @@ public class Sound {
         return musicMuted;
     }
 
-    // -------------------------------------------------------------------------
-    // PUBLIC UPDATE – call every frame
-    // -------------------------------------------------------------------------
-
-    /**
-     * Call once per frame from Core.render().
-     *
-     * @param delta  time since last frame
-     * @param moving true if the player is currently pressing any movement key
-     */
     public void update(float delta, boolean moving) {
         if (moving && footstepSound != null) {
             footstepTimer += delta;
@@ -232,10 +222,6 @@ public class Sound {
             footstepTimer = 0f;
         }
     }
-
-    // -------------------------------------------------------------------------
-    // EVENT SOUND HELPERS – call these from Core on specific actions
-    // -------------------------------------------------------------------------
 
     /** Called when the player tills land. */
     public void playHoeLand() {
@@ -319,7 +305,7 @@ public class Sound {
     }
 
     // -------------------------------------------------------------------------
-    // AMBIENT THREAD – birds every ~30s
+    // AMBIENT THREAD – birds every 30s
     // -------------------------------------------------------------------------
 
     private void startAmbientThread() {

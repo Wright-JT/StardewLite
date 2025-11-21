@@ -1,6 +1,7 @@
 ## Gradle:
 .gradle/
 gradle-app.setting
+StardewLite-build
 /build/
 /android/build/
 /core/build/
@@ -140,7 +141,6 @@ www-test/
 /headless/nbdist/
 /server/nbdist/
 /shared/nbdist/
-
 nbactions.xml
 nb-configuration.xml
 
