@@ -6,7 +6,7 @@ Server hosting, Health bar, Hunger bar, Eating food, Player movement, Vendor int
 **What does not fully work:**
 
 Joining a server via local IP does currently work. The IP that is being joined will need to be entered twice.
-The host cannot currently see the Client's messages, but the client can the Host's messages. Host messages may print twice on the host's end.
+The host cannot currently see the Client's messages, but the client can see the Host's messages. Host messages may print twice on the host's end.
 
 Player can place fence on themselves and get themself stuck.
 
